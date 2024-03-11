@@ -42,19 +42,22 @@ class Board:
     def __init__(self):
         self.matrix = [['' for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
 
-    def place_tiles(self, position, word):
-        # Determine the starting row and column based on the position
+    def get_row_and_col_from_position(self, position):
         if position[0].isdigit():
             # Horizontal play
-            digit_end_index = 1
+            row_end_index = 1
             if position[1].isdigit():
-                digit_end_index = 2
-            row = int(position[:digit_end_index]) - 1
-            col = ord(position[digit_end_index:]) - ord('A')
+                row_end_index = 2
+            row = int(position[:row_end_index]) - 1
+            col = ord(position[row_end_index:]) - ord('A')
         else:
+            # Vertical play
             col = ord(position[0]) - ord('A')
             row = int(position[1:]) - 1
+        return row, col
 
+    def place_tiles(self, position, word):
+        row, col = self.get_row_and_col_from_position(position)
         for i, tile in enumerate(word):
             if tile == '.':
                 continue
@@ -64,16 +67,7 @@ class Board:
                 self.matrix[row + i][col] = tile
 
     def unplace_tiles(self, position, word):
-        # Determine the starting row and column based on the position
-        if position[0].isdigit():
-            # Horizontal play
-            row = int(position[1:]) - 1
-            col = ord(position[0]) - ord('A')
-        else:
-            # Vertical play
-            row = ord(position[0]) - ord('A')
-            col = int(position[1:]) - 1
-
+        row, col = self.get_row_and_col_from_position(position)
         # Unplace the tiles from the board and update the bag
         for i, tile in enumerate(word):
             if tile == '.':
@@ -83,33 +77,35 @@ class Board:
             else:
                 self.matrix[row + i][col] = ''
 
-    def get_play_through_tiles(self, position, word):
-        play_through_tiles = []
+    def get_filled_in_word(self, position, word):
+        filled_in_word = ''
+        row, col = self.get_row_and_col_from_position(position)
 
-        # Determine the starting row and column based on the position
-        if position[0].isdigit():
-            # Horizontal play
-            row = int(position[1:]) - 1
-            col = ord(position[0]) - ord('A')
-        else:
-            # Vertical play
-            row = ord(position[0]) - ord('A')
-            col = int(position[1:]) - 1
-
+        word_length = len(word)
         # Check for play through tiles
         for i, tile in enumerate(word):
+            print_tile = tile
             if tile == '.':
-                if position[0].isdigit():
-                    # Horizontal play
-                    play_through_tiles.append(self.board[row][col + i])
-                else:
-                    # Vertical play
-                    play_through_tiles.append(self.board[row + i][col])
+                print_tile = self.matrix[row][col]
+                if i == 0:
+                    filled_in_word += '('
+            
+            filled_in_word += print_tile
+
+            if tile == '.' and (i == word_length - 1 or  word[i + 1] != '.'):
+                filled_in_word += ')'
+
+
+            if tile != '.' and i + 1 < word_length and word[i + 1] == '.':
+                filled_in_word += '('
+
+            if position[0].isdigit():
+                col += 1
+            else:
+                row += 1
 
         # Surround play through tiles with parentheses
-        new_word = ''.join(f"({tile})" if tile in play_through_tiles else tile for tile in word)
-
-        return f"{position} {new_word}"
+        return filled_in_word
 
 class Bag:
     def __init__(self):
@@ -162,6 +158,9 @@ class Game:
         self.players = Players()
         self.board = Board()
         self.bag = Bag()
+        self.previous_player = ""
+        self.previous_position = ""
+        self.previous_word = ""
         self.parse_gcg(gcg)
 
     def place_tiles(self, position, word):
@@ -179,8 +178,6 @@ class Game:
         with open(gcg, 'r') as f:
             lines = f.readlines()
 
-        previous_position = ""
-        previous_word = ""
         for line in lines:
             print("\n\nline: ", line.strip())
             # Set player 1's name
@@ -204,17 +201,20 @@ class Game:
                 print(f'final score: {name} has {score}')
 
             # Parse a tile placement move
-            match = re.search("^>[^:]+:\s+[\w\?]+\s+(\w+)\s+([\w\.]+)", line)
+            match = re.search("^>([^:]+):\s+[\w\?]+\s+(\w+)\s+([\w\.]+)\s+(\S+)\s+(\S+)", line)
             if match is not None and match.group(1) is not None:
-                previous_position = match.group(1).strip()
-                previous_word = match.group(2).strip()
-                self.place_tiles(previous_position, previous_word)
+                self.previous_player = match.group(1).strip()
+                self.previous_position = match.group(2).strip()
+                self.previous_word = match.group(3).strip()
+                self.previous_score = match.group(4).strip()
+                self.previous_total = match.group(5).strip()
+                self.place_tiles(self.previous_position, self.previous_word)
 
             match = re.search("^>[^:]+:\s+[\w\?]+\s+--", line)
             if match is not None:
                 print("lost challenge detected, adding tiles back")
-                print(f'previous word: {previous_word}')
-                self.unplace_tiles(previous_position, previous_word)
+                print(f'previous word: {self.previous_word}')
+                self.unplace_tiles(self.previous_position, self.previous_word)
 
             match = re.search("^#rack\d\s([\w\?]+)", line)
             if match is not None and match.group(1) is not None:
@@ -236,13 +236,18 @@ class Game:
         count_string += str(unseen_tile_count - unseen_vowel_count).rjust(2) + " consonants"
         return count_string
 
-async def main(gcg_filename, score_output_filename, unseen_output_filename, count_output_filename):
+    def get_last_play_string(self):
+        previous_filled_in_word = self.board.get_filled_in_word(self.previous_position, self.previous_word)
+        return f'{self.previous_player}: {self.previous_position} {previous_filled_in_word} {self.previous_score} {self.previous_total}'
+
+async def main(gcg_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
 
         print("scores: " + game.get_scores_string())
         print("unseen: " + game.get_unseen_tiles_string())
         print("count: " + game.get_unseen_count_string())
+        print("last play: " + game.get_last_play_string())
 
         with open(score_output_filename, "w") as score_file:
             score_file.write(game.get_scores_string())
@@ -253,12 +258,16 @@ async def main(gcg_filename, score_output_filename, unseen_output_filename, coun
         with open(count_output_filename, "w") as count_file:
             count_file.write(game.get_unseen_count_string())
 
+        with open(last_play_output_filename, "w") as last_play_file:
+            last_play_file.write(game.get_last_play_string())
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gcg", type=str, help="the gcg file to monitor")
     parser.add_argument("--score", type=str, help="the output file to write the score")
     parser.add_argument("--unseen", type=str, help="the output file to write the unseen tiles")
     parser.add_argument("--count", type=str, help="the output file to write the number of unseen tiles and vowel to consonant ratio")
+    parser.add_argument("--lp", type=str, help="the output file to write the last play")
     args = parser.parse_args()
 
     if not args.gcg:
@@ -277,4 +286,8 @@ if __name__ == "__main__":
         print("required: count")
         exit(-1)
 
-    asyncio.run(main(args.gcg, args.score, args.unseen, args.count))
+    if not args.lp:
+        print("required: lp")
+        exit(-1)
+
+    asyncio.run(main(args.gcg, args.score, args.unseen, args.count, args.lp))
