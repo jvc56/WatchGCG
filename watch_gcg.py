@@ -36,7 +36,7 @@ class Players:
         return self.scores[self.get_index(name_or_index)]
 
     def set_score(self, name_or_index, score):
-        self.scores[self.get_index(name_or_index)] = score
+        self.scores[self.get_index(name_or_index)] = int(score)
 
 class Board:
     def __init__(self):
@@ -95,7 +95,6 @@ class Board:
             if tile == '.' and (i == word_length - 1 or  word[i + 1] != '.'):
                 filled_in_word += ')'
 
-
             if tile != '.' and i + 1 < word_length and word[i + 1] == '.':
                 filled_in_word += '('
 
@@ -104,7 +103,6 @@ class Board:
             else:
                 row += 1
 
-        # Surround play through tiles with parentheses
         return filled_in_word
 
 class Bag:
