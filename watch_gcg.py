@@ -5,6 +5,10 @@ from watchfiles import awatch
 
 vowels = "aeiouyAEIOUY"
 BOARD_SIZE = 15
+MOVE_TYPE_UNSPECIFIED = 0
+MOVE_TYPE_TILE_PLACEMENT = 1
+MOVE_TYPE_EXCHANGE = 2
+MOVE_TYPE_PASS = 3
 
 class Players:
     def __init__(self):
@@ -159,6 +163,7 @@ class Game:
         self.previous_player = ""
         self.previous_position = ""
         self.previous_word = ""
+        self.previous_move_type = MOVE_TYPE_UNSPECIFIED
         self.parse_gcg(gcg)
 
     def place_tiles(self, position, word):
@@ -177,18 +182,18 @@ class Game:
             lines = f.readlines()
 
         for line in lines:
-            print("\n\nline: ", line.strip())
+            # print("\n\nline: ", line.strip())
             # Set player 1's name
             match = re.search("#player1\s+(\S+)", line)
             if match is not None and match.group(1) is not None and self.players.get_name(0) == "":
                 self.players.set_name(0, match.group(1).strip())
-                print(f'team going first: {self.players.get_name(0)}')
+                # print(f'team going first: {self.players.get_name(0)}')
 
             # Set player 2's name
             match = re.search("#player2\s+(\S+)", line)
             if match is not None and match.group(1) is not None and self.players.get_name(1) == "":
                 self.players.set_name(1, match.group(1).strip())
-                print(f'team going second: {self.players.get_name(1)}')
+                # print(f'team going second: {self.players.get_name(1)}')
 
             # Set final score
             match = re.search("^>([^:]+).*\D(\d+)$", line)
@@ -196,7 +201,7 @@ class Game:
                 name = match.group(1).strip()
                 score = match.group(2).strip()
                 self.players.set_score(name, score)
-                print(f'final score: {name} has {score}')
+                # print(f'final score: {name} has {score}')
 
             # Parse a tile placement move
             match = re.search("^>([^:]+):\s+[\w\?]+\s+(\w+)\s+([\w\.]+)\s+(\S+)\s+(\S+)", line)
@@ -206,19 +211,35 @@ class Game:
                 self.previous_word = match.group(3).strip()
                 self.previous_score = match.group(4).strip()
                 self.previous_total = match.group(5).strip()
+                self.previous_move_type = MOVE_TYPE_TILE_PLACEMENT
                 self.place_tiles(self.previous_position, self.previous_word)
+            
+            match = re.search("^>([^:]+):\s+[\w\?]+\s+-([\w\?]+)\s+(\S+)\s+(\d+)", line)
+            if match is not None and match.group(1) is not None:
+                self.previous_player = match.group(1).strip()
+                self.previous_word = match.group(2).strip()
+                self.previous_score = match.group(3).strip()
+                self.previous_total = match.group(4).strip()
+                self.previous_move_type = MOVE_TYPE_EXCHANGE
+
+            match = re.search("^>([^:]+):\s+[\w\?]+\s+-\s+(\S+)\s+(\d+)", line)
+            if match is not None and match.group(1) is not None:
+                self.previous_player = match.group(1).strip()
+                self.previous_score = match.group(2).strip()
+                self.previous_total = match.group(3).strip()
+                self.previous_move_type = MOVE_TYPE_PASS
 
             match = re.search("^>[^:]+:\s+[\w\?]+\s+--", line)
             if match is not None:
-                print("lost challenge detected, adding tiles back")
-                print(f'previous word: {self.previous_word}')
+                # print("lost challenge detected, adding tiles back")
+                # print(f'previous word: {self.previous_word}')
                 self.unplace_tiles(self.previous_position, self.previous_word)
 
             match = re.search("^#rack\d\s([\w\?]+)", line)
             if match is not None and match.group(1) is not None:
                 tiles_on_rack = match.group(1).strip()
-                print("tiles_on_rack: ", tiles_on_rack)
-                print(f'tiles on rack: {tiles_on_rack}')
+                # print("tiles_on_rack: ", tiles_on_rack)
+                # print(f'tiles on rack: {tiles_on_rack}')
                 self.remove_tiles(tiles_on_rack)
 
     def get_scores_string(self):
@@ -235,17 +256,25 @@ class Game:
         return count_string
 
     def get_last_play_string(self):
-        previous_filled_in_word = self.board.get_filled_in_word(self.previous_position, self.previous_word)
-        return f'{self.previous_player}: {self.previous_position} {previous_filled_in_word} {self.previous_score} {self.previous_total}'
+        if self.previous_move_type == MOVE_TYPE_UNSPECIFIED:
+            raise ValueError("No previous move detected")
+        elif self.previous_move_type == MOVE_TYPE_TILE_PLACEMENT:
+            previous_filled_in_word = self.board.get_filled_in_word(self.previous_position, self.previous_word)
+            return f'{self.previous_player}: {self.previous_position} {previous_filled_in_word} {self.previous_score} {self.previous_total}'
+        elif self.previous_move_type == MOVE_TYPE_EXCHANGE:
+            return f'{self.previous_player}: exch {self.previous_word} {self.previous_score} {self.previous_total}'
+        elif self.previous_move_type == MOVE_TYPE_PASS:
+            return f'{self.previous_player}: pass {self.previous_score} {self.previous_total}'
+        raise ValueError(f'Unknown move type: {self.previous_move_type}')
 
 async def main(gcg_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
 
-        print("scores: " + game.get_scores_string())
-        print("unseen: " + game.get_unseen_tiles_string())
-        print("count: " + game.get_unseen_count_string())
-        print("last play: " + game.get_last_play_string())
+        # print("scores: " + game.get_scores_string())
+        # print("unseen: " + game.get_unseen_tiles_string())
+        # print("count: " + game.get_unseen_count_string())
+        # print("last play: " + game.get_last_play_string())
 
         with open(score_output_filename, "w") as score_file:
             score_file.write(game.get_scores_string())
