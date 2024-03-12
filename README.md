@@ -18,8 +18,6 @@ Alternatively, your python command might be called 'python3' in which case you w
 python3 -m pip install watchfiles
 ```
 
-Going forward, these instructions will use the 'python' command, but use 'python3' if needed.
-
 Once the watchfiles module is installed, you can now run the watch_gcg.py script. The script needs 5 arguments:
 
 - The input GCG file to watch
