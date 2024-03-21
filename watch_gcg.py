@@ -4,12 +4,15 @@ import asyncio
 from watchfiles import awatch
 
 vowels = "aeiouyAEIOUY"
+
 BOARD_SIZE = 15
+
 MOVE_TYPE_UNSPECIFIED = 0
 MOVE_TYPE_TILE_PLACEMENT = 1
 MOVE_TYPE_EXCHANGE = 2
 MOVE_TYPE_PASS = 3
 
+LAST_PLAY_PREFIX = "     LAST PLAY: "
 class Players:
     def __init__(self):
         self.names = ["", ""]
@@ -255,31 +258,31 @@ class Game:
         count_string += str(unseen_tile_count - unseen_vowel_count).rjust(2) + " consonants"
         return count_string
 
-    def get_previous_filled_in_word(self):
-        return self.board.get_filled_in_word(self.previous_position, self.previous_word)
-
-    def get_previous_filled_in_word_without_parens(self):
-        word_with_parens = self.get_previous_filled_in_word()
-        return re.sub(r'[^A-Za-z]', '', word_with_parens.upper())
-
-    def get_last_play_string(self):
+    def get_last_play_string(self, word_definitions):
         if self.previous_move_type == MOVE_TYPE_UNSPECIFIED:
-            raise ValueError("No previous move detected")
+            return ""
         elif self.previous_move_type == MOVE_TYPE_TILE_PLACEMENT:
-            previous_filled_in_word = self.get_previous_filled_in_word()
-            return f'{self.previous_player}: {self.previous_position} {previous_filled_in_word} {self.previous_score} {self.previous_total}'
+            word_with_parens = self.board.get_filled_in_word(self.previous_position, self.previous_word)
+            word_without_parens = re.sub(r'[^A-Za-z]', '', word_with_parens.upper())
+            word_definition = get_word_definition(word_definitions, word_without_parens)
+            return f'{LAST_PLAY_PREFIX}{self.previous_player} {self.previous_position} {word_with_parens} {self.previous_score} {self.previous_total} | {word_definition}'
         elif self.previous_move_type == MOVE_TYPE_EXCHANGE:
-            return f'{self.previous_player}: exch {self.previous_word} {self.previous_score} {self.previous_total}'
+            return f'{LAST_PLAY_PREFIX}{self.previous_player} exch {self.previous_word} {self.previous_score} {self.previous_total}'
         elif self.previous_move_type == MOVE_TYPE_PASS:
-            return f'{self.previous_player}: pass {self.previous_score} {self.previous_total}'
+            return f'{LAST_PLAY_PREFIX}{self.previous_player} pass {self.previous_score} {self.previous_total}'
         raise ValueError(f'Unknown move type: {self.previous_move_type}')
 
 def read_definitions(filename):
     word_definitions = {}
     with open(filename, 'r') as file:
         for line in file:
-            word, definition = line.strip().split('\t', 1)
+            parts = line.strip().split(",", 1)
+            if len(parts) != 2:
+                raise ValueError(f'Invalid definition: {line}')
+            word = parts[0]
+            definition = parts[1][1:-1]
             word_definitions[word] = definition
+
     return word_definitions
 
 def get_word_definition(word_definitions, word):
@@ -288,7 +291,7 @@ def get_word_definition(word_definitions, word):
     # print(f'No definition found for {word}')
     return ""
 
-async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename, dfn_output_filename):
+async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
     word_definitions = read_definitions(lex_filename)
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
@@ -308,10 +311,7 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
             count_file.write(game.get_unseen_count_string())
 
         with open(last_play_output_filename, "w") as last_play_file:
-            last_play_file.write(game.get_last_play_string())
-
-        with open(dfn_output_filename, "w") as dfn_file:
-            dfn_file.write(get_word_definition(word_definitions, game.get_previous_filled_in_word_without_parens()))
+            last_play_file.write(game.get_last_play_string(word_definitions))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -321,7 +321,6 @@ if __name__ == "__main__":
     parser.add_argument("--unseen", type=str, help="the output file to write the unseen tiles")
     parser.add_argument("--count", type=str, help="the output file to write the number of unseen tiles and vowel to consonant ratio")
     parser.add_argument("--lp", type=str, help="the output file to write the last play")
-    parser.add_argument("--dfn", type=str, help="the output file to write the definition")
     args = parser.parse_args()
 
     if not args.gcg:
@@ -348,8 +347,4 @@ if __name__ == "__main__":
         print("required: lex")
         exit(-1)
 
-    if not args.lex:
-        print("required: dfn")
-        exit(-1)
-
-    asyncio.run(main(args.gcg, args.lex, args.score, args.unseen, args.count, args.lp, args.dfn))
+    asyncio.run(main(args.gcg, args.lex, args.score, args.unseen, args.count, args.lp))
