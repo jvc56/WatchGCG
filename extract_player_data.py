@@ -46,7 +46,7 @@ def parse_player_csv(csv_filename, player1_index, player2_index):
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
-        print("Usage: python script.py <csv_filename> <player1_index> <player2_index>")
+        print("Usage: python script.py <csv_filename> <player1_number> <player2_number>")
         sys.exit(1)
 
     try:
