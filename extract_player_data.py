@@ -2,7 +2,7 @@ import sys
 import os
 
 def get_output_filename(column_name, player_number):
-    return f"p{player_number}{column_name}"
+    return f"p{player_number}{column_name}.txt"
 
 def write_single_file(column_name, player_number, content):
     with open(get_output_filename(column_name, player_number), 'w') as file:
