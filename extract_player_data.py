@@ -34,7 +34,7 @@ def parse_player_csv(csv_filename, player1_number, player2_number):
             line = line.strip()
             if line == "":
                 continue
-            split_line = [entry.strip() for entry in line.split(',')]
+            split_line = [entry.strip() for entry in line.split('\t')]
             if line_number == 0:
                 header = split_line
             else:
