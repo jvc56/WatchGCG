@@ -30,7 +30,7 @@ Once the watchfiles module is installed, you can now run the watch_gcg.py script
 For example, to watch a GCG file called 'alice_vs_bob.gcg', use the following command:
 
 ```
-python3 watch_gcg.py --gcg alice_vs_bob.gcg --lex CSW21_with_defs.txt --score score.txt --unseen unseen.txt --count count.txt --lp lp.txt
+python3 watch_gcg.py --test.gcg --lex CSW22defs.csv --score score.txt --unseen unseen.txt --count count.txt --lp lp.txt
 ```
 
 The script should now run indefinitely watching for changes to the GCG file. To stop execution, hit control-C.
