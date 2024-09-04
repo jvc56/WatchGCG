@@ -1,6 +1,6 @@
 # WatchGCG
 
-This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts. Right now it only contains the watch_gcg.py script, but we might add more later.
+This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts.
 
 ## Using watch_gcg.py to capture realtime output from a GCG file
 
