@@ -187,19 +187,19 @@ class Game:
         for line in lines:
             # print("\n\nline: ", line.strip())
             # Set player 1's name
-            match = re.search("#player1\s+(\S+)", line)
+            match = re.search(r"#player1\s+(\S+)", line)
             if match is not None and match.group(1) is not None and self.players.get_name(0) == "":
                 self.players.set_name(0, match.group(1).strip())
                 # print(f'team going first: {self.players.get_name(0)}')
 
             # Set player 2's name
-            match = re.search("#player2\s+(\S+)", line)
+            match = re.search(r"#player2\s+(\S+)", line)
             if match is not None and match.group(1) is not None and self.players.get_name(1) == "":
                 self.players.set_name(1, match.group(1).strip())
                 # print(f'team going second: {self.players.get_name(1)}')
 
             # Set final score
-            match = re.search("^>([^:]+).*\D(\d+)$", line)
+            match = re.search(r"^>([^:]+).*\D(\d+)$", line)
             if match is not None and match.group(1) is not None and match.group(2) is not None:
                 name = match.group(1).strip()
                 score = match.group(2).strip()
@@ -207,7 +207,7 @@ class Game:
                 # print(f'final score: {name} has {score}')
 
             # Parse a tile placement move
-            match = re.search("^>([^:]+):\s+[\w\?]+\s+(\w+)\s+([\w\.]+)\s+(\S+)\s+(\S+)", line)
+            match = re.search(r"^>([^:]+):\s+[\w\?]+\s+(\w+)\s+([\w\.]+)\s+(\S+)\s+(\S+)", line)
             if match is not None and match.group(1) is not None:
                 self.previous_player = match.group(1).strip()
                 self.previous_position = match.group(2).strip()
@@ -217,7 +217,7 @@ class Game:
                 self.previous_move_type = MOVE_TYPE_TILE_PLACEMENT
                 self.place_tiles(self.previous_position, self.previous_word)
             
-            match = re.search("^>([^:]+):\s+[\w\?]+\s+-([\w\?]+)\s+(\S+)\s+(\d+)", line)
+            match = re.search(r"^>([^:]+):\s+[\w\?]+\s+-([\w\?]+)\s+(\S+)\s+(\d+)", line)
             if match is not None and match.group(1) is not None:
                 self.previous_player = match.group(1).strip()
                 self.previous_word = match.group(2).strip()
@@ -225,20 +225,20 @@ class Game:
                 self.previous_total = match.group(4).strip()
                 self.previous_move_type = MOVE_TYPE_EXCHANGE
 
-            match = re.search("^>([^:]+):\s+[\w\?]+\s+-\s+(\S+)\s+(\d+)", line)
+            match = re.search(r"^>([^:]+):\s+[\w\?]+\s+-\s+(\S+)\s+(\d+)", line)
             if match is not None and match.group(1) is not None:
                 self.previous_player = match.group(1).strip()
                 self.previous_score = match.group(2).strip()
                 self.previous_total = match.group(3).strip()
                 self.previous_move_type = MOVE_TYPE_PASS
 
-            match = re.search("^>[^:]+:\s+[\w\?]+\s+--", line)
+            match = re.search(r"^>[^:]+:\s+[\w\?]+\s+--", line)
             if match is not None:
                 # print("lost challenge detected, adding tiles back")
                 # print(f'previous word: {self.previous_word}')
                 self.unplace_tiles(self.previous_position, self.previous_word)
 
-            match = re.search("^#rack\d\s([\w\?]+)", line)
+            match = re.search(r"^#rack\d\s([\w\?]+)", line)
             if match is not None and match.group(1) is not None:
                 tiles_on_rack = match.group(1).strip()
                 # print("tiles_on_rack: ", tiles_on_rack)
