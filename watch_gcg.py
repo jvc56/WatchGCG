@@ -248,7 +248,7 @@ class Game:
             self.previous_player = self.previous_player.replace('_', ' ')
 
     def get_scores_string(self):
-        return str(self.players.get_score(0)).rjust(3) + " - " + str(self.players.get_score(1)).ljust(3)
+        return str(self.players.get_score(0)).rjust(3, '0') + " - " + str(self.players.get_score(1)).rjust(3, '0')
 
     def get_unseen_tiles_string(self):
         return self.bag.get_string()
