@@ -323,6 +323,7 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
         with open(last_play_output_filename, "w") as last_play_file:
             last_play_file.write(game.get_last_play_string(word_definitions))
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gcg", type=str, help="the gcg file to monitor")
@@ -357,4 +358,7 @@ if __name__ == "__main__":
         print("required: lex")
         exit(-1)
 
-    asyncio.run(main(args.gcg, args.lex, args.score, args.unseen, args.count, args.lp))
+    try:
+        asyncio.run(main(args.gcg, args.lex, args.score, args.unseen, args.count, args.lp))
+    except KeyboardInterrupt:
+        print("\n\nDetected Ctrl-C from user input, stopping script.\n")
