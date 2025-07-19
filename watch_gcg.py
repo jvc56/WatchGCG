@@ -295,6 +295,14 @@ def get_word_definition(word_definitions, word):
 
 async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
     word_definitions = read_definitions(lex_filename)
+    print(
+        f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
+        "On certain operating systems you might see syntax warnings above which can be safely ignored.\n"
+        "This script is designed to run indefinitely watching for changes to the GCG file,\n"
+        "so while it's running you will be unable to enter commands in this terminal.\n"
+        "Any syntax or error messages after this message are legitimate and should be reported to the developer.\n"
+        "To stop execution, hit control-C.\n"
+    )
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
 
