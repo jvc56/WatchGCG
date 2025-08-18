@@ -27,7 +27,7 @@ Once the watchfiles module is installed, you can now run the watch_gcg.py script
 - The output file name for the unseen tiles count
 - The output file name for the last play
 
-For example, to watch a GCG file called 'alice_vs_bob.gcg', use the following command:
+For example, to watch a GCG file called 'test.gcg', use the following command:
 
 ```
 python3 watch_gcg.py --gcg test.gcg --lex CSW24defs.csv --score score.txt --unseen unseen.txt --count count.txt --lp lp.txt
