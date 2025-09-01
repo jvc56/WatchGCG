@@ -248,16 +248,20 @@ class Game:
             self.previous_player = self.previous_player.replace('_', ' ')
 
     def get_scores_string(self):
-        return str(self.players.get_score(0)).rjust(3) + " - " + str(self.players.get_score(1)).ljust(3)
+        return str(self.players.get_score(0)).rjust(3, '0') + " - " + str(self.players.get_score(1)).rjust(3, '0')
 
     def get_unseen_tiles_string(self):
         return self.bag.get_string()
 
     def get_unseen_count_string(self):
         unseen_tile_count, unseen_vowel_count = self.bag.get_unseen_counts()
-        count_string = str(unseen_tile_count) + " tiles\n"
-        count_string += str(unseen_vowel_count).rjust(2) + " vowels | "
-        count_string += str(unseen_tile_count - unseen_vowel_count).rjust(2) + " consonants"
+        unseen_consonant_count = unseen_tile_count - unseen_vowel_count
+        tile_word = "tile" if unseen_tile_count == 1 else "tiles"
+        count_string = str(unseen_tile_count) + " " + tile_word + "\n"
+        vowel_word = "vowel" if unseen_vowel_count == 1 else "vowels"
+        count_string += str(unseen_vowel_count).rjust(2) + " " + vowel_word + " | "
+        consonant_word = "consonant" if unseen_consonant_count == 1 else "consonants"
+        count_string += str(unseen_consonant_count).rjust(2) + " " + consonant_word
         return count_string
 
     def get_last_play_string(self, word_definitions):
