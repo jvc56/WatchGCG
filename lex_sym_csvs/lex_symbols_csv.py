@@ -106,11 +106,11 @@ def main(args):
    # plus_words = []
     for w in sorted(set_wow24):
         display = w
-        # WOW24 word gets 'x' if it's not in NWL23 AND not in CSW24
+        # in WOW24 but not in NWL23 AND not in CSW24 -> 'x'
         if (w not in set_nwl23) and (w not in set_csw24):
             display = append_marker(display, "x")
         
-        # WOW24 word gets '+' if not in NWL20 AND not in NWL18
+        # in WOW24 but not in NWL20 AND not in NWL18 -> '+'
         if (w not in set_nwl20) and (w not in set_nwl18):
             display = append_marker(display, "+")
             # plus_words.append(w)
@@ -152,7 +152,7 @@ def main(args):
         if w not in set_wow24:
             display = append_marker(display, "x")
 
-        # in NWL23, but not in NWL20 -> '+'
+        # in NWL23 but not in NWL20 -> '+'
         if w not in set_nwl20:
             display = append_marker(display, "+")
 
