@@ -17,7 +17,6 @@ def load_defs(path):
                 continue
             if "\t" not in line:
                 # If a malformed row appears, skip it silently
-                # (we only expect <WORD>\t<def> here)
                 continue
             word, definition = line.split("\t", 1)
             word = word.strip().upper()
@@ -99,11 +98,11 @@ def main(args):
                 wow24_defs[w] = nwl23_defs[w]
         report_missing("After NWL23 fill", set_wow24, wow24_defs)
 
-    # Build WOW24 rows (apply rule 5 with OR)
+    # Build WOW24 rows
     wow24_rows = []
     for w in sorted(set_wow24):
         display = w
-        # (5) WOW24 word gets 'x' if it's not in NWL23 OR not in CSW24
+        # WOW24 word gets 'x' if it's not in NWL23 AND not in CSW24
         if (w not in set_nwl23) and (w not in set_csw24):
             display = append_marker(display, "x")
         wow24_rows.append((display, wow24_defs[w]))
@@ -113,7 +112,7 @@ def main(args):
     for w in sorted(set_csw24):
         display = w
 
-        # in CSW24 but not in NWL23 and not in WOW24 -> '#'
+        # in CSW24 but not in NWL23 AND not in WOW24 -> '#'
         if (w not in set_nwl23) and (w not in set_wow24):
             display = append_marker(display, "#")
 
