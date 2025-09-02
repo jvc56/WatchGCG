@@ -75,6 +75,8 @@ def main(args):
     wow24_words = load_wordlist(args.wow24_words)
 
     # Base sets (raw words, untagged)
+    set_nwl18 = set(nwl18_defs.keys())
+    set_nwl20 = set(nwl20_defs.keys())
     set_nwl23 = set(nwl23_defs.keys())
     set_csw24 = set(csw24_defs.keys())
     set_csw21 = set(csw21_defs.keys())
@@ -100,12 +102,26 @@ def main(args):
 
     # Build WOW24 rows
     wow24_rows = []
+   
+   # plus_words = []
     for w in sorted(set_wow24):
         display = w
         # WOW24 word gets 'x' if it's not in NWL23 AND not in CSW24
         if (w not in set_nwl23) and (w not in set_csw24):
             display = append_marker(display, "x")
+        
+        # WOW24 word gets '+' if not in NWL20 AND not in NWL18
+        if (w not in set_nwl20) and (w not in set_nwl18):
+            display = append_marker(display, "+")
+            # plus_words.append(w)
+
         wow24_rows.append((display, wow24_defs[w]))
+    
+   # Debuggng: track WOW24 words that get '+'
+    
+   # print(f"[DEBUG] WOW24 words with '+': {len(plus_words)}")
+   # if plus_words:
+   #     print("[DEBUG] First 5 WOW24 words with '+':", ", ".join(plus_words[:5]))
 
     # ---------- Build CSW24 (apply # and +) ----------
     csw24_rows = []
@@ -135,6 +151,10 @@ def main(args):
         # in NWL23 but not in WOW24 -> 'x'
         if w not in set_wow24:
             display = append_marker(display, "x")
+
+        # in NWL23, but not in NWL20 -> '+'
+        if w not in set_nwl20:
+            display = append_marker(display, "+")
 
         definition = nwl23_defs[w]
         nwl23_rows.append((display, definition))
