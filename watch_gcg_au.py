@@ -5,6 +5,11 @@ from watchfiles import awatch
 
 vowels = "aeiouyAEIOUY"
 
+LEX_SUFFIX_RE = re.compile(r'[+#x$]+$')
+
+def _clean_csv_key(s: str) -> str:
+    return LEX_SUFFIX_RE.sub('', s.strip()).upper()
+
 BOARD_SIZE = 15
 
 MOVE_TYPE_UNSPECIFIED = 0
@@ -284,9 +289,11 @@ def read_definitions(filename):
             parts = line.strip().split(",", 1)
             if len(parts) != 2:
                 raise ValueError(f'Invalid definition: {line}')
-            word = parts[0]
-            definition = parts[1][1:-1]
-            word_definitions[word] = definition
+            raw_word = parts[0]                      
+            definition = parts[1].strip()            
+            definition = definition[1:-1]        
+            key = _clean_csv_key(raw_word)           
+            word_definitions[key] = definition
 
     return word_definitions
 
