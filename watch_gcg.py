@@ -269,14 +269,16 @@ class Game:
         count_string += str(unseen_consonant_count).rjust(2) + " " + consonant_word
         return count_string
 
-    def get_last_play_string(self, word_definitions):
+    def get_last_play_string(self, word_definitions, lex_symbols_map):
         if self.previous_move_type == MOVE_TYPE_UNSPECIFIED:
             return ""
         elif self.previous_move_type == MOVE_TYPE_TILE_PLACEMENT:
             word_with_parens = self.board.get_filled_in_word(self.previous_position, self.previous_word)
             word_without_parens = re.sub(r'[^A-Za-z]', '', word_with_parens.upper())
             word_definition = get_word_definition(word_definitions, word_without_parens)
-            return f'{LAST_PLAY_PREFIX}{self.previous_player} {self.previous_position} {word_with_parens} {self.previous_score} {self.previous_total} | {word_definition}'
+            lex_symbols = lex_symbols_map.get(word_without_parens, "")
+            display_word = word_with_parens + lex_symbols
+            return f'{LAST_PLAY_PREFIX}{self.previous_player} {self.previous_position} {display_word} {self.previous_score} {self.previous_total} | {word_definition}'
         elif self.previous_move_type == MOVE_TYPE_EXCHANGE:
             return f'{LAST_PLAY_PREFIX}{self.previous_player} exch {self.previous_word} {self.previous_score} {self.previous_total}'
         elif self.previous_move_type == MOVE_TYPE_PASS:
@@ -285,6 +287,7 @@ class Game:
 
 def read_definitions(filename):
     word_definitions = {}
+    lex_symbols_map = {} 
     with open(filename, 'r') as file:
         for line in file:
             parts = line.strip().split(",", 1)
@@ -293,10 +296,16 @@ def read_definitions(filename):
             raw_word = parts[0]                      
             definition = parts[1].strip()            
             definition = definition[1:-1]        
-            key = _clean_csv_key(raw_word)           
-            word_definitions[key] = definition
+            key = _clean_csv_key(raw_word)
 
-    return word_definitions
+            # Extract lexicon symbols exactly as they appear in the CSV (after the cleaned key)
+            m = LEX_SUFFIX_RE.search(raw_word)
+            lex_symbols = m.group(0) if m else ""
+
+            word_definitions[key] = definition
+            lex_symbols_map[key] = lex_symbols
+
+    return word_definitions, lex_symbols_map
 
 def get_word_definition(word_definitions, word):
     if word in word_definitions:
@@ -305,7 +314,7 @@ def get_word_definition(word_definitions, word):
     return ""
 
 async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
-    word_definitions = read_definitions(lex_filename)
+    word_definitions, lex_symbols_map = read_definitions(lex_filename)
     print(
         f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
         "On certain operating systems you might see syntax warnings above which can be safely ignored.\n"
@@ -332,7 +341,7 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
             count_file.write(game.get_unseen_count_string())
 
         with open(last_play_output_filename, "w") as last_play_file:
-            last_play_file.write(game.get_last_play_string(word_definitions))
+            last_play_file.write(game.get_last_play_string(word_definitions, lex_symbols_map))
 
 
 if __name__ == "__main__":
