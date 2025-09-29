@@ -602,7 +602,7 @@ def run_gui():
             self._make_log()
 
             # Ensure dependency; show progress in the GUI log
-            # Choose upgrade_tools=True if you want the GUI to upgrade pip/setuptools/wheel
+            # Choose upgrade_tools=True to upgrade pip/setuptools/wheel
             ensure_awatch(self._append_log, upgrade_tools=False)
 
             # Runner + polling
