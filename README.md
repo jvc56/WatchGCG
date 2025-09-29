@@ -1,24 +1,54 @@
 # WatchGCG
 
-This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts.
+This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts. Works as both a **CLI** tool and a **GUI** using the same script.
 
-## Using watch_gcg.py to capture realtime output from a GCG file
+## Features
 
-The watch_gcg.py script requires that you have python3 installed on your computer. You can follow the steps [here](https://kinsta.com/knowledgebase/install-python) to install python3 for your operating system.
+- **Automatic dependency handling**: The script auto-installs required modules (no need to pre-install).
 
-Once python3 is installed, you will need to install the python watchfiles module. This module allows python to "watch" the GCG file you are editing so it can update the output files when it detects the GCG file has changed. Install the module with the following command:
+- **Dual interface**: Run as CLI or GUI
 
-```
-python -m pip install watchfiles
-```
+- **Two output “versions”**:
+   - ``std`` (default): one score file containing both players' scores
+   - ``au``: separate score files for Player 1 and Player 2
 
-Alternatively, your python command might be called 'python3' in which case you would need to run the following command:
+## Requirements
+- Python 3.7+ recommended (any modern Python 3 should work).
 
-```
-python3 -m pip install watchfiles
-```
+- ``watchfiles`` module is **installed automatically** on first run. If you prefer manual install:
 
-Once the watchfiles module is installed, you can now run the watch_gcg.py script. The script needs 6 arguments:
+    ```bash
+    # Manual installation
+    python -m pip install watchfiles
+    # or
+    python3 -m pip install watchfiles
+    # on Windows if you use the launcher:
+    py -m pip install watchfiles
+    ```
+> The script may optionally upgrade ``pip/setuptools/wheel``, but by default it does not (see ``ensure_awatch(upgrade_tools=False)`` in the code).
+
+## Running the GUI
+You have two options:
+- UI (**Recommended**)
+    - Double-click ``watch_gcg.py``
+- CLI
+    - Any **one** of these will open the GUI:
+
+    ```bash
+    python watch_gcg.py
+    # OR
+    python3 watch_gcg.py
+    # OR
+    py watch_gcg.py   # Windows launcher
+    ```
+
+>Running the GUI presumes that you have the TK App installed
+
+## CLI Usage
+
+### Default version -- one combined score file (``std``)
+
+The script needs 6 arguments:
 
 - The input GCG file to watch
 - The input lexicon file with definitions
@@ -29,10 +59,31 @@ Once the watchfiles module is installed, you can now run the watch_gcg.py script
 
 For example, to watch a GCG file called 'test.gcg', use the following command:
 
-```
-python3 watch_gcg.py --gcg test.gcg --lex CSW24defs.csv --score score.txt --unseen unseen.txt --count count.txt --lp lp.txt
+```bash
+python3 watch_gcg.py --gcg test.gcg --lex CSW24defs.csv --score score.txt --unseen unseentiles.txt --count unseencount.txt --lp lastplay.txt
 ```
 
-The script should now run indefinitely watching for changes to the GCG file. To stop execution, hit control-C.
+### Australian version -- two score files (``--ver au``)
 
-The output files will update whenever the GCG file changes, so if you are editing the GCG file in Quackle, it will not write to the output files until you save the game in Quackle.
+To output two separate score files, pass:
+- ``--ver au``, and
+- either one ``--score`` OR **both** ``--p1score`` and ``--p2score``
+
+#### Option A (use ``--score`` only)
+
+```bash
+python3 watch_gcg.py --gcg test.gcg --lex CSW24defs.csv --ver au --score score.txt --unseen unseentiles.txt --count unseencount.txt --lp lastplay.txt
+# writes ./p1_score.txt and ./p2_score.txt
+```
+
+#### Option B (use both ``--p1score`` and ``--p2score``)
+
+```bash
+python3 watch_gcg.py --gcg test.gcg --lex CSW24defs.csv --ver au --p1score p1_score.txt --p2score p2_score.txt --unseen unseentiles.txt --count unseencount.txt --lp lastplay.txt
+
+```
+
+## Notes
+The script should now run indefinitely watching for changes to the GCG file. To stop execution in the terminal (CLI), hit ``Control-C``. In the GUI, close the window.
+
+The output files update when you save the game. Editing/committing moves in Quackle without saving the ``.gcg`` file won’t trigger changes.
