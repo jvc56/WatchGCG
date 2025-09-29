@@ -1,21 +1,31 @@
 # WatchGCG
 
-This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts. Works as both a **CLI** tool and a **GUI** using the same script.
+This repo contains scripts to extract game data from GCG files in realtime for live stream broadcasts. Works as both a **GUI** and a **CLI** tool using the same script.
+
+## Table of Contents
+- [Features](#features)
+- [Requirements](#requirements)
+- [Running the GUI](#running-the-gui)
+- [CLI Usage](#cli-usage)
+   - [Default Version](#default-version----one-combined-score-file-std)
+   - [Australian Version](#australian-version----two-score-files---ver-au)
+- [Notes](#notes)
 
 ## Features
 
-- **Automatic dependency handling**: The script auto-installs required modules (no need to pre-install).
+- **Automatic Dependency Handling**: The script auto-installs required modules (no need to pre-install anything).
 
-- **Dual interface**: Run as CLI or GUI
+- **Dual Interface**: The same script can be run as a graphical interface (GUI) or from the command line (CLI).
 
-- **Two output “versions”**:
-   - ``std`` (default): one score file containing both players' scores
-   - ``au``: separate score files for Player 1 and Player 2
+- **Version Selection**: Supports both the default (``std``) and Australian (``au``) versions of the script (choose with the optional ``--ver`` parameter).
+
+   - ``std``: outputs one score file containing both players' scores
+   - ``au``: outputs separate score files for Player 1 and Player 2
 
 ## Requirements
 - Python 3.7+ recommended (any modern Python 3 should work).
 
-- ``watchfiles`` module is **installed automatically** on first run. If you prefer manual install:
+- ``watchfiles`` module is **installed automatically** on first run. If you prefer manual install instead, run:
 
     ```bash
     # Manual installation
@@ -28,10 +38,15 @@ This repo contains scripts to extract game data from GCG files in realtime for l
 > The script may optionally upgrade ``pip/setuptools/wheel``, but by default it does not (see ``ensure_awatch(upgrade_tools=False)`` in the code).
 
 ## Running the GUI
+>Running the GUI presumes that you have the TK App installed (Windows & the official macOS python.org installers already include Tk.)
+
 You have two options:
 - UI (**Recommended**)
+    - Clone the repo or download the ``watch_gcg.py`` script to your computer
     - Double-click ``watch_gcg.py``
 - CLI
+    - Clone the repo or download the ``watch_gcg.py`` script to your computer
+    - Navigate to its directory in the Command Terminal
     - Any **one** of these will open the GUI:
 
     ```bash
@@ -42,7 +57,7 @@ You have two options:
     py watch_gcg.py   # Windows launcher
     ```
 
->Running the GUI presumes that you have the TK App installed
+
 
 ## CLI Usage
 
