@@ -248,7 +248,7 @@ class App(ttk.Frame):
         ttk.Button(bar, text="Start", command=self.on_start).pack(side="right")
         # Install button appears ONLY when watchfiles is missing
         self.install_btn = ttk.Button(bar, text="Install 'watchfiles'…", command=self._install_now)
-        # Don’t pack it yet; we’ll pack when needed
+        
 
     # ---------- UI: log ----------
     def _make_log(self):
