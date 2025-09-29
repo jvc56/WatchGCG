@@ -1,9 +1,58 @@
+#!/usr/bin/env python3
+
+import os
 import re
+import sys
 import argparse
 import asyncio
-from watchfiles import awatch
+import subprocess
 
-vowels = "aeiouyAEIOUY"
+_AWATCH = None  
+
+def ensure_awatch(log_fn=None, upgrade_tools=False):
+    """
+    Ensure watchfiles.awatch is available. Optionally upgrade pip/setuptools/wheel first.
+    Cached after first success.
+    """
+    global _AWATCH
+    if _AWATCH is not None:
+        return _AWATCH
+
+    def _log(msg):
+        if log_fn:
+            log_fn(msg + "\n")
+        else:
+            print(msg, file=sys.stderr)
+
+    try:
+        from watchfiles import awatch as _a
+        _AWATCH = _a
+        return _AWATCH
+    except Exception:
+        pass  # fall through to install
+
+    py = sys.executable or "python"
+
+    if upgrade_tools:
+        _log("Upgrading pip/setuptools/wheel …")
+        try:
+            subprocess.check_call([py, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+        except subprocess.CalledProcessError:
+            _log("Warning: Could not upgrade pip/setuptools/wheel. Continuing …")
+
+    _log("Installing 'watchfiles' …")
+    try:
+        subprocess.check_call([py, "-m", "pip", "install", "watchfiles"])
+    except subprocess.CalledProcessError:
+        _log(f"Error: Failed to install 'watchfiles'. Try: {py} -m pip install watchfiles")
+        raise
+
+    from watchfiles import awatch as _a
+    _AWATCH = _a
+    _log("Successfully installed 'watchfiles'.")
+    return _AWATCH
+
+vowels = "aeiouAEIOU"
 
 LEX_SUFFIX_RE = re.compile(r'[+#x$]+$')
 
@@ -254,6 +303,12 @@ class Game:
 
     def get_scores_string(self):
         return str(self.players.get_score(0)).rjust(3, '0') + " - " + str(self.players.get_score(1)).rjust(3, '0')
+    
+    def get_p1_score_string(self):
+        return str(self.players.get_score(0)).rjust(3)
+
+    def get_p2_score_string(self):
+        return str(self.players.get_score(1)).rjust(3)
 
     def get_unseen_tiles_string(self):
         return self.bag.get_string()
@@ -313,7 +368,19 @@ def get_word_definition(word_definitions, word):
     # print(f'No definition found for {word}')
     return ""
 
-async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_filename, count_output_filename, last_play_output_filename):
+async def main(
+        gcg_filename, 
+        lex_filename, 
+        score_output_filename, 
+        unseen_output_filename, 
+        count_output_filename, 
+        last_play_output_filename, 
+        ver="std", 
+        p1score=None, 
+        p2score=None):
+    
+    awatch = ensure_awatch()
+
     word_definitions, lex_symbols_map = read_definitions(lex_filename)
     print(
         f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
@@ -323,6 +390,7 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
         "Any syntax or error messages after this message are legitimate and should be reported to the developer.\n"
         "To stop execution, hit control-C.\n"
     )
+
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
 
@@ -331,9 +399,27 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
         # print("count: " + game.get_unseen_count_string())
         # print("last play: " + game.get_last_play_string())
 
-        with open(score_output_filename, "w") as score_file:
-            score_file.write(game.get_scores_string())
-    
+        if ver == "au":
+            if p1score and p2score:
+                p1_path = p1score
+                p2_path = p2score
+            else:
+                # making sure no issues if someone passes in a path for --ver au
+                out_dir = os.path.dirname(score_output_filename) or "."
+                base = os.path.basename(score_output_filename)
+                p1_path = os.path.join(out_dir, "p1_" + base)  
+                p2_path = os.path.join(out_dir, "p2_" + base)
+
+            with open(p1_path, "w", encoding="utf-8") as score_file:
+                score_file.write(game.get_p1_score_string())
+
+            with open(p2_path, "w", encoding="utf-8") as score_file:
+                score_file.write(game.get_p2_score_string())
+        else:
+            # Standard mode: write one file with both scores
+            with open(score_output_filename, "w", encoding="utf-8") as score_file:
+                score_file.write(game.get_scores_string())
+
         with open(unseen_output_filename, "w") as unseen_file:
             unseen_file.write(game.get_unseen_tiles_string())
 
@@ -343,42 +429,446 @@ async def main(gcg_filename, lex_filename, score_output_filename, unseen_output_
         with open(last_play_output_filename, "w") as last_play_file:
             last_play_file.write(game.get_last_play_string(word_definitions, lex_symbols_map))
 
+async def run_watcher(args):
+    await main(
+        args.gcg, 
+        args.lex, 
+        args.score, 
+        args.unseen, 
+        args.count, 
+        args.lp, 
+        args.ver, 
+        args.p1score, 
+        args.p2score
+    )
+
+def build_cli_parser():
+    p = argparse.ArgumentParser(add_help=False)  # we'll add help in the top-level parser
+    p.add_argument("--gcg", type=str, help="the gcg file to monitor")
+    p.add_argument("--lex", type=str, help="the lexicon file to use for definitions")
+    p.add_argument("--score", type=str, help="the output file(s) to write the score")
+    p.add_argument("--p1score", type=str, help="(au optional) explicit Player 1 score output file")
+    p.add_argument("--p2score", type=str, help="(au optional) explicit Player 2 score output file")
+    p.add_argument("--unseen", type=str, help="the output file to write the unseen tiles")
+    p.add_argument("--count", type=str,  help="the output file to write the number of unseen tiles and vowel to consonant ratio")
+    p.add_argument("--lp", type=str, help="the output file to write the last play")
+    p.add_argument("--ver", choices=["std", "au"], default="std",
+                   help="Output format: 'std' (default) outputs one file with both scores; 'au' writes p1_*/p2_* files")
+    return p
+
+def run_gui():
+    import json
+    import os
+    import platform
+    import queue
+    import shutil
+    import signal
+    import sys
+    import threading
+    from pathlib import Path
+    from datetime import datetime
+
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+
+# -------------------------------
+# Persistent config
+# -------------------------------
+    APP_NAME = "WatchGCG-GUI"
+    CONFIG_DIR = os.path.join(Path.home(), f".{APP_NAME.lower()}")
+    CONFIG_FILE = os.path.join(CONFIG_DIR, "folders.json")
+
+    FOLDER_KEYS = {
+        "gcg":   "Last folder used for GCG files",
+        "lex":   "Last folder used for Lexicon CSV/TXT",
+        "score": "Last folder used for Score output",
+        "unseen":"Last folder used for Unseen tiles output",
+        "count": "Last folder used for Unseen count output",
+        "lp":    "Last folder used for Last-play output",
+    }
+
+    SUCCESS_MARK = "To stop execution, hit control-C."  # gate log output
+
+    # -------------------------------
+    # Folder memory helpers
+    # -------------------------------
+    def load_all_folders():
+        if os.path.exists(CONFIG_FILE):
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return {}
+        return {}
+
+    def save_last_folder(folder_path, key="last_folder"):
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        data = load_all_folders()
+        data[key] = folder_path
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    def load_last_folder(key="last_folder"):
+        data = load_all_folders()
+        return data.get(key)
+
+    # -------------------------------
+    # Runner that spawns watch_gcg.py (shows only post-success logs)
+    # -------------------------------
+    class TailRunner:
+        def __init__(self, on_log):
+            self.on_log = on_log
+            self.proc = None
+            self.q = queue.Queue()
+            self.thread = None
+            self.show_after_success = False
+            self._gcg_display = None
+
+        def start(self, python_exe, script_path, args, gcg_path=None):
+            if self.proc:
+                self.on_log("[warn] Already running.\n")
+                return
+            self._gcg_display = Path(gcg_path).name if gcg_path else None
+            cmd = [python_exe, "-u", script_path] + args
+            self.on_log(f"[info] Launching: {' '.join(cmd)}\n")
+
+            def reader():
+                try:
+                    self.proc = subprocess.Popen(
+                        cmd,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        bufsize=1,
+                    )
+                    # Stream stdout lines
+                    for raw in self.proc.stdout:
+                        line = raw if raw is not None else ""
+                        if not self.show_after_success and SUCCESS_MARK in line:
+                            self.show_after_success = True
+                            gcg_filename = self._gcg_display or "the selected GCG file"
+                            self.q.put(f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
+                                    "Any syntax or error messages after this message are legitimate and should be reported to the developer.\n"
+                                    "To stop execution, exit out of this window.\n")
+                            continue
+                        if self.show_after_success:
+                            self.q.put(line)
+                except FileNotFoundError:
+                    self.q.put("[error] Could not start Python or script.\n")
+                finally:
+                    self.q.put("[info] Process exited.\n")
+
+            self.thread = threading.Thread(target=reader, daemon=True)
+            self.thread.start()
+
+        def poll(self):
+            try:
+                while True:
+                    self.on_log(self.q.get_nowait())
+            except queue.Empty:
+                pass
+
+        def stop(self):
+            if not self.proc:
+                return
+            try:
+                if os.name == "nt":
+                    # Graceful on Windows
+                    self.proc.terminate()
+                else:
+                    self.proc.send_signal(signal.SIGTERM)
+            except Exception:
+                pass
+            self.proc = None
+            self.thread = None
+            self.show_after_success = False
+        
+    # -------------------------------
+    # Main GUI
+    # -------------------------------
+    class App(ttk.Frame):
+        def __init__(self, master):
+            super().__init__(master)
+            master.title("WatchGCG")
+            master.geometry("780x560")
+            master.minsize(700, 520)
+            self.pack(fill="both", expand=True)
+
+            os.makedirs(CONFIG_DIR, exist_ok=True)
+
+            # Build UI
+            self._make_file_picker_section()
+            self._make_controls()
+            self._make_log()
+
+            # Ensure dependency; show progress in the GUI log
+            # Choose upgrade_tools=True to upgrade pip/setuptools/wheel
+            ensure_awatch(self._append_log, upgrade_tools=False)
+
+            # Runner + polling
+            self.runner = TailRunner(self._append_log)
+            self.after(120, self._poll_runner)
+
+            # Stop child on window close
+            master.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # ---------- UI: file pickers ----------
+        def _make_file_picker_section(self):
+            self.inputs = {}
+
+            frm = ttk.LabelFrame(self, text="Paths")
+            frm.pack(fill="x", padx=10, pady=10)
+
+            # --- Version row (dropdown) ---
+            ver_row = ttk.Frame(frm)
+            ver_row.pack(fill="x", padx=8, pady=6)
+
+            ttk.Label(ver_row, text="Version", width=28).pack(side="left")
+            self.ver_labels = {"Default": "std", "Australian": "au"}
+            self.ver_var = tk.StringVar(value="Default")  # user-facing label
+
+            ver_combo = ttk.Combobox(
+                ver_row,
+                textvariable=self.ver_var,
+                state="readonly",
+                width=20,
+                values=list(self.ver_labels.keys())  # ["Default", "Australian"]
+            )
+            ver_combo.pack(side="left")
+            ver_combo.bind("<<ComboboxSelected>>", lambda e: self._on_version_change())
+            
+            # --- Paths frame ---
+            self.paths_frame = ttk.Frame(frm)
+            self.paths_frame.pack(fill="x")
+
+            # Build rows into self.paths_frame to show/hide subsets
+            self._build_path_rows(self.paths_frame)
+
+            # Initialize visibility
+            self._on_version_change()
+
+        def _build_path_rows(self, frm):
+            
+            fields = [
+                ("gcg",   "GCG file (.gcg)",          [("GCG file", "*.gcg")]),
+                ("lex",   "Lexicon file (.csv)",      [("Lexicon", "*.csv")]),
+                # Score field (single) for Default
+                ("score", "Score (.txt)",             [("Score", "*.txt")]),
+                # AU fields (two) – initially hidden
+                ("p1score", "Player 1 Score (.txt)",  [("Player 1 Score", "*.txt")]),
+                ("p2score", "Player 2 Score (.txt)",  [("Player 2 Score", "*.txt")]),
+                ("unseen","Unseen tiles (.txt)",      [("Unseen Tiles", "*.txt")]),
+                ("count", "Unseen count (.txt)",      [("Unseen Count", "*.txt")]),
+                ("lp",    "Last play (.txt)",         [("Last Play", "*.txt")]),
+            ]
+
+            self._row_widgets = {}
+
+            for key, label, patterns in fields:
+                row = ttk.Frame(frm)
+                row.pack(fill="x", padx=8, pady=6)
+
+                ttk.Label(row, text=label, width=28).pack(side="left")
+                var = tk.StringVar()
+                ent = ttk.Entry(row, textvariable=var)
+                ent.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+                def make_browse(k=key, pats=patterns, evar=var, dialog_label=label):
+                    def browse():
+                        lastdir = load_last_folder(k) or os.getcwd()
+                        path = filedialog.askopenfilename(
+                            parent=self,
+                            title=f"Choose {dialog_label}",
+                            initialdir=lastdir,
+                            filetypes=pats
+                        )
+
+                        if path:
+                            evar.set(path)
+                            save_last_folder(os.path.dirname(path), k)
+                    return browse
+
+                ttk.Button(row, text="Browse…", command=make_browse()).pack(side="left")
+
+                self.inputs[key] = var
+                self._row_widgets[key] = row
+
+        def _on_version_change(self):
+            label = self.ver_var.get()
+            mode = self.ver_labels.get(label, "std")
+
+            if mode == "std":
+                self._row_widgets["score"].pack(fill="x", padx=8, pady=6)
+                self._row_widgets["p1score"].pack_forget()
+                self._row_widgets["p2score"].pack_forget()
+                # show before unseen
+                self._row_widgets["score"].pack(
+                    before=self._row_widgets["unseen"], fill="x", padx=8, pady=6
+                )
+            else:
+                self._row_widgets["score"].pack_forget()
+                self._row_widgets["p1score"].pack(
+                    before=self._row_widgets["unseen"], fill="x", padx=8, pady=6)
+                self._row_widgets["p2score"].pack(
+                    before=self._row_widgets["unseen"], fill="x", padx=8, pady=6)
+        
+            self.mode = mode
+
+
+        # ---------- UI: controls ----------
+        def _make_controls(self):
+            bar = ttk.Frame(self)
+            bar.pack(fill="x", padx=10, pady=(0, 10))
+
+            self.python_var = tk.StringVar(value=sys.executable or "python")
+            ttk.Label(bar, text="Python exe:").pack(side="left")
+            py_entry = ttk.Entry(bar, textvariable=self.python_var, width=42)
+            py_entry.pack(side="left", padx=(4, 10))
+
+            def choose_python():
+                path = filedialog.askopenfilename(title="Choose Python executable")
+                if path:
+                    self.python_var.set(path)
+            ttk.Button(bar, text="Find…", command=choose_python).pack(side="left", padx=(0, 12))
+
+            ttk.Button(bar, text="Start", command=self.on_start).pack(side="right")
+          
+
+        # ---------- UI: log ----------
+        def _make_log(self):
+            logfrm = ttk.LabelFrame(self, text="Log")
+            logfrm.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+            btnbar = ttk.Frame(logfrm)
+            btnbar.pack(side="bottom",fill="x", padx=8, pady=(0, 8))
+            ttk.Button(btnbar, text="Copy log", command=self._copy_log).pack(side="left")
+            ttk.Button(btnbar, text="Clear", command=self._clear_log).pack(side="left", padx=(6, 0))
+
+            self.log_text = tk.Text(logfrm, wrap="word", height=18, state="disabled")
+            self.log_text.pack(fill="both", expand=True, padx=8, pady=8)
+
+
+        def _append_log(self, s: str):
+            ts = datetime.now().strftime("%H:%M:%S")
+            self.log_text.configure(state="normal")
+            self.log_text.insert("end", f"[{ts}] {s}")
+            self.log_text.see("end")
+            self.log_text.configure(state="disabled")
+
+        def _copy_log(self):
+            text = self.log_text.get("1.0", "end-1c")
+            self.clipboard_clear()
+            self.clipboard_append(text)
+            messagebox.showinfo("Copied", "Log copied to clipboard.")
+
+        def _clear_log(self):
+            self.log_text.configure(state="normal")
+            self.log_text.delete("1.0", "end")
+            self.log_text.configure(state="disabled")
+
+        # ---------- Start / stop ----------
+        def on_start(self):
+            vals = {k: v.get().strip() for k, v in self.inputs.items()}
+            mode = getattr(self, "mode", "std")
+           
+            # Validate required fields
+            missing = []
+            base_required = ["gcg", "lex", "unseen", "count", "lp"]
+            if mode == "std":
+                base_required.append("score")
+            else:
+                # AU requires both p1/p2 explicitly (GUI does not derive from single score file)
+                if not (vals.get("p1score") and vals.get("p2score")):
+                    missing.append("p1score & p2score")
+            # check base fields
+            for k in base_required:
+                if not vals.get(k):
+                    missing.append(k)
+
+            if missing:
+                messagebox.showwarning("Missing fields", f"Please choose files for: {', '.join(missing)}")
+                return
+
+            script_path = os.path.abspath(__file__)
+            args = [
+                "--gcg", vals["gcg"],
+                "--lex", vals["lex"],
+                "--unseen", vals["unseen"],
+                "--count", vals["count"],
+                "--lp", vals["lp"],
+                "--ver", mode,
+            ]
+
+            if mode == "std":
+                args += ["--score", vals["score"]]
+            else:
+                # Because GUI always requires two files explicitly in AU mode
+                args += ["--p1score", vals["p1score"], "--p2score", vals["p2score"]]
+
+            # Persist folders
+            for k, v in vals.items():
+                if v:
+                    save_last_folder(os.path.dirname(v), k)
+
+            self.runner.start(self.python_var.get(), script_path, args, gcg_path=vals["gcg"])
+        
+        def _on_close(self):
+            self.runner.stop()
+            self.master.destroy()
+
+        # ---------- Poll runner ----------
+        def _poll_runner(self):
+            self.runner.poll()
+            self.after(120, self._poll_runner)
+        
+    def _gui_main():
+        root = tk.Tk()
+        try: root.call("tk", "scaling", 1.25)
+        except Exception: pass
+        style = ttk.Style(root)
+        try:
+            if "vista" in style.theme_names():
+                style.theme_use("vista")
+        except Exception:
+            pass
+        App(root)
+        root.mainloop()
+
+    _gui_main()
+
+def parse_top_level(argv):
+    # top-level parser to catch --gui & forward the rest
+    top = argparse.ArgumentParser(prog="watch_gcg", add_help=True)
+    top.add_argument("--gui", action="store_true", help="Launch the GUI")
+    # pass the rest to the CLI parser
+    known, rest = top.parse_known_args(argv)
+    return known, rest
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--gcg", type=str, help="the gcg file to monitor")
-    parser.add_argument("--lex", type=str, help="the lexicon file to use for definitions")
-    parser.add_argument("--score", type=str, help="the output file to write the score")
-    parser.add_argument("--unseen", type=str, help="the output file to write the unseen tiles")
-    parser.add_argument("--count", type=str, help="the output file to write the number of unseen tiles and vowel to consonant ratio")
-    parser.add_argument("--lp", type=str, help="the output file to write the last play")
-    args = parser.parse_args()
+    known, rest = parse_top_level(sys.argv[1:])
+    if known.gui or not rest:
+        # GUI mode if --gui OR if no other args given
+        ensure_awatch()  # ensure dependency
+        run_gui()
+    else:
+        cli = build_cli_parser().parse_args(rest)
+        
+        for required_inputs in ("gcg", "lex", "unseen", "count", "lp"):
+            if not getattr(cli, required_inputs, None):
+                print(f"required: {required_inputs}"); sys.exit(-1)
 
-    if not args.gcg:
-        print("required: gcg")
-        exit(-1)
-
-    if not args.score:
-        print("required: score")
-        exit(-1)
-
-    if not args.unseen:
-        print("required: unseen")
-        exit(-1)
-
-    if not args.count:
-        print("required: count")
-        exit(-1)
-
-    if not args.lp:
-        print("required: lp")
-        exit(-1)
-
-    if not args.lex:
-        print("required: lex")
-        exit(-1)
-
-    try:
-        asyncio.run(main(args.gcg, args.lex, args.score, args.unseen, args.count, args.lp))
-    except KeyboardInterrupt:
-        print("\n\nDetected Ctrl-C from user input, stopping script.\n")
+        if cli.ver == "au":
+            # Must have either BOTH explicit p1/p2 OR a single --score (to derive p1_/p2_)
+            if (bool(cli.p1score) ^ bool(cli.p2score)):  # xor -> only one given
+                print("Error: Must provide BOTH --p1score and --p2score or neither for Australian version.")
+                sys.exit(-1)
+            if not ( (cli.p1score and cli.p2score) or cli.score ):
+                print("Error: Either provide BOTH --p1score and --p2score, or ONE --score to derive p1_/p2_ files.")
+                sys.exit(-1)
+        else:
+            if not cli.score:
+                print("required: score"); sys.exit(-1)
+        try:
+            asyncio.run(run_watcher(cli))
+        except KeyboardInterrupt:
+            print("\n\nDetected Ctrl-C from user input, stopping script.\n")
