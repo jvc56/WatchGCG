@@ -5,7 +5,52 @@ import re
 import sys
 import argparse
 import asyncio
-from watchfiles import awatch
+import subprocess
+
+_AWATCH = None  
+
+def ensure_awatch(log_fn=None, upgrade_tools=False):
+    """
+    Ensure watchfiles.awatch is available. Optionally upgrade pip/setuptools/wheel first.
+    Cached after first success.
+    """
+    global _AWATCH
+    if _AWATCH is not None:
+        return _AWATCH
+
+    def _log(msg):
+        if log_fn:
+            log_fn(msg + "\n")
+        else:
+            print(msg, file=sys.stderr)
+
+    try:
+        from watchfiles import awatch as _a
+        _AWATCH = _a
+        return _AWATCH
+    except Exception:
+        pass  # fall through to install
+
+    py = sys.executable or "python"
+
+    if upgrade_tools:
+        _log("Upgrading pip/setuptools/wheel …")
+        try:
+            subprocess.check_call([py, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+        except subprocess.CalledProcessError:
+            _log("Warning: Could not upgrade pip/setuptools/wheel. Continuing …")
+
+    _log("Installing 'watchfiles' …")
+    try:
+        subprocess.check_call([py, "-m", "pip", "install", "watchfiles"])
+    except subprocess.CalledProcessError:
+        _log(f"Error: Failed to install 'watchfiles'. Try: {py} -m pip install watchfiles")
+        raise
+
+    from watchfiles import awatch as _a
+    _AWATCH = _a
+    _log("Successfully installed 'watchfiles'.")
+    return _AWATCH
 
 vowels = "aeiouAEIOU"
 
@@ -333,6 +378,9 @@ async def main(
         ver="std", 
         p1score=None, 
         p2score=None):
+    
+    awatch = ensure_awatch()
+
     word_definitions, lex_symbols_map = read_definitions(lex_filename)
     print(
         f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
@@ -342,6 +390,7 @@ async def main(
         "Any syntax or error messages after this message are legitimate and should be reported to the developer.\n"
         "To stop execution, hit control-C.\n"
     )
+
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
 
@@ -414,7 +463,6 @@ def run_gui():
     import queue
     import shutil
     import signal
-    import subprocess
     import sys
     import threading
     from pathlib import Path
@@ -463,38 +511,6 @@ def run_gui():
     def load_last_folder(key="last_folder"):
         data = load_all_folders()
         return data.get(key)
-
-    # -------------------------------
-    # Dependency: watchfiles
-    # -------------------------------
-    def has_watchfiles():
-        try:
-            import watchfiles  # noqa: F401
-            return True
-        except Exception:
-            return False
-
-
-    def install_watchfiles(parent):
-        py = sys.executable or "python"
-        cmd = [py, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"]
-        try:
-            subprocess.check_call(cmd)
-        except Exception:
-            # Not fatal; try to install watchfiles anyway
-            pass
-
-        try:
-            subprocess.check_call([py, "-m", "pip", "install", "watchfiles"])
-            messagebox.showinfo("Installation complete", "Installed 'watchfiles' successfully.")
-            return True
-        except subprocess.CalledProcessError as e:
-            messagebox.showerror(
-                "Installation failed",
-                f"Automatic install of 'watchfiles' failed.\n\nError:\n{e}\n\n"
-                "Please run:\npython -m pip install watchfiles"
-            )
-            return False
 
     # -------------------------------
     # Runner that spawns watch_gcg.py (shows only post-success logs)
@@ -567,7 +583,7 @@ def run_gui():
             self.thread = None
             self.show_after_success = False
         
-        # -------------------------------
+    # -------------------------------
     # Main GUI
     # -------------------------------
     class App(ttk.Frame):
@@ -585,12 +601,13 @@ def run_gui():
             self._make_controls()
             self._make_log()
 
+            # Ensure dependency; show progress in the GUI log
+            # Choose upgrade_tools=True if you want the GUI to upgrade pip/setuptools/wheel
+            ensure_awatch(self._append_log, upgrade_tools=False)
+
             # Runner + polling
             self.runner = TailRunner(self._append_log)
             self.after(120, self._poll_runner)
-
-            # Dependency check on startup
-            self._refresh_watchfiles_state(first_run=True)
 
             # Stop child on window close
             master.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -715,8 +732,6 @@ def run_gui():
             ttk.Button(bar, text="Find…", command=choose_python).pack(side="left", padx=(0, 12))
 
             ttk.Button(bar, text="Start", command=self.on_start).pack(side="right")
-            # Install button appears ONLY when watchfiles is missing
-            self.install_btn = ttk.Button(bar, text="Install 'watchfiles'…", command=self._install_now)
           
 
         # ---------- UI: log ----------
@@ -753,15 +768,6 @@ def run_gui():
 
         # ---------- Start / stop ----------
         def on_start(self):
-            # If watchfiles isn't installed, prompt now
-            if not has_watchfiles():
-                if messagebox.askyesno("Missing dependency", "The 'watchfiles' package is required. Install it now?"):
-                    if not install_watchfiles():
-                        return
-                    self._refresh_watchfiles_state()  # hide the button if succeed
-                else:
-                    return
-
             vals = {k: v.get().strip() for k, v in self.inputs.items()}
             mode = getattr(self, "mode", "std")
            
@@ -814,35 +820,7 @@ def run_gui():
         def _poll_runner(self):
             self.runner.poll()
             self.after(120, self._poll_runner)
-
-        # ---------- Dependency UI state ----------
-        def _refresh_watchfiles_state(self, first_run=False):
-            ok = has_watchfiles()
-            if ok:
-                # Hide install button if it was visible
-                try:
-                    self.install_btn.pack_forget()
-                except Exception:
-                    pass
-                if first_run is False:
-                    messagebox.showinfo("Ready", "'watchfiles' is installed. You can press Start.")
-            else:
-                # Offer install immediately on first run
-                if first_run:
-                    if messagebox.askyesno(
-                        "Missing dependency",
-                        "WatchGCG requires the 'watchfiles' package.\n\nInstall it now?"
-                    ):
-                        if install_watchfiles():
-                            self._refresh_watchfiles_state()
-                            return
-                # If still missing, show the button
-                self.install_btn.pack(side="left")
-
-        def _install_now(self):
-            if install_watchfiles():
-                self._refresh_watchfiles_state()
-
+        
     def _gui_main():
         root = tk.Tk()
         try: root.call("tk", "scaling", 1.25)
@@ -870,6 +848,7 @@ if __name__ == "__main__":
     known, rest = parse_top_level(sys.argv[1:])
     if known.gui or not rest:
         # GUI mode if --gui OR if no other args given
+        ensure_awatch()  # ensure dependency
         run_gui()
     else:
         cli = build_cli_parser().parse_args(rest)
