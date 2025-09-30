@@ -6,6 +6,8 @@ This repo contains scripts to extract game data from GCG files in realtime for l
 - [Features](#features)
 - [Requirements](#requirements)
 - [Running the GUI](#running-the-gui)
+    - [Methods](#methods)
+    - [In the GUI](#in-the-gui)
 - [CLI Usage](#cli-usage)
    - [Default Version](#default-version----one-combined-score-file-std)
    - [Australian Version](#australian-version----two-score-files---ver-au)
@@ -40,6 +42,7 @@ This repo contains scripts to extract game data from GCG files in realtime for l
 ## Running the GUI
 >Running the GUI presumes that you have the TK App installed (Windows & the official macOS python.org installers already include Tk.)
 
+### Methods
 You have two options:
 - UI (**Recommended**)
     - Clone the repo or download the ``watch_gcg.py`` script to your computer
@@ -56,7 +59,13 @@ You have two options:
     # OR
     py watch_gcg.py   # Windows launcher
     ```
+### In the GUI
 
+- Use the dropdown menu at the top to choose between the Default and Australian versions. 
+- Use the ``Browse`` buttons to choose pre-existing files.
+- Press ``Start`` to start watching the ``.gcg`` file.
+
+> Note: **DO NOT** change the ``Python exe`` field and **DO NOT** click on the ``Find`` button unless you specifically want to change the python executable that you're using. This field is pre-populated by the script, which automatically finds your python executable. If you change the field and can't figure out where your python executable lives, close and re-open the GUI using the methods detailed above. 
 
 
 ## CLI Usage
