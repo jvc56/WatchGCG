@@ -42,7 +42,10 @@ def ensure_awatch(log_fn=None, upgrade_tools=False):
 
     _log("Installing 'watchfiles' …")
     try:
-        subprocess.check_call([py, "-m", "pip", "install", "watchfiles"])
+        args = [py, "-m", "pip", "install", "watchfiles"]
+        if os.name == "nt":
+            args.insert(3, "--user")  # py -m pip install --user watchfiles
+        subprocess.check_call(args)
     except subprocess.CalledProcessError:
         _log(f"Error: Failed to install 'watchfiles'. Try: {py} -m pip install watchfiles")
         raise
