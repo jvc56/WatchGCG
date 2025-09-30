@@ -56,7 +56,13 @@ You have two options:
     # OR
     py watch_gcg.py   # Windows launcher
     ```
+### In the GUI
 
+- Use the dropdown menu at the top to choose between the Default and Australian versions. 
+- Use the ``Browse`` buttons to choose pre-existing files.
+- Press ``Start`` to start watching the ``.gcg`` file.
+
+> Note: **DO NOT** change the ``Python exe`` field and **DO NOT** click on the ``Find`` button unless you specifically want to change the python executable that you're using. This field is pre-populated by the script, which automatically finds your python executable. If you change the field and can't figure out where your python executable lives, close and re-open the GUI using the methods detailed above. 
 
 
 ## CLI Usage
