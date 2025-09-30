@@ -42,7 +42,10 @@ def ensure_awatch(log_fn=None, upgrade_tools=False):
 
     _log("Installing 'watchfiles' …")
     try:
-        subprocess.check_call([py, "-m", "pip", "install", "watchfiles"])
+        args = [py, "-m", "pip", "install", "watchfiles"]
+        if os.name == "nt":
+            args.insert(3, "--user")  
+        subprocess.check_call(args)
     except subprocess.CalledProcessError:
         _log(f"Error: Failed to install 'watchfiles'. Try: {py} -m pip install watchfiles")
         raise
@@ -528,6 +531,10 @@ def run_gui():
             if self.proc:
                 self.on_log("[warn] Already running.\n")
                 return
+            
+            if not python_exe:
+                python_exe = sys.executable or "py"
+
             self._gcg_display = Path(gcg_path).name if gcg_path else None
             cmd = [python_exe, "-u", script_path] + args
             self.on_log(f"[info] Launching: {' '.join(cmd)}\n")
@@ -605,6 +612,23 @@ def run_gui():
             # Choose upgrade_tools=True to upgrade pip/setuptools/wheel
             ensure_awatch(self._append_log, upgrade_tools=False)
 
+            # Validate python exe
+            py = (self.python_var.get() or "").strip()
+            if not py:
+                py = sys.executable  # fallback
+
+            def _looks_like_python_exe(p):
+                base = os.path.basename(p).lower()
+                return base in ("python.exe", "pythonw.exe", "py.exe", "pyw.exe") or base.startswith("python") and base.endswith(".exe")
+
+            # If user accidentally picked the script or a folder, warn
+            if os.path.isdir(py) or (py.lower().endswith(".py") and os.path.exists(py)) or (os.name == "nt" and not _looks_like_python_exe(py) and py not in ("py", "python", "python3")):
+                messagebox.showwarning(
+                    "Invalid Python",
+                    "The 'Python exe' field must point to a Python interpreter (python.exe) or be 'py'."
+                )
+                return
+            
             # Runner + polling
             self.runner = TailRunner(self._append_log)
             self.after(120, self._poll_runner)
@@ -726,7 +750,10 @@ def run_gui():
             py_entry.pack(side="left", padx=(4, 10))
 
             def choose_python():
-                path = filedialog.askopenfilename(title="Choose Python executable")
+                kw = {}
+                if os.name == "nt":
+                    kw["filetypes"] = [("Python executable", "python*.exe"), ("Executables", "*.exe"), ("All files", "*.*")]
+                path = filedialog.askopenfilename(title="Choose Python executable", **kw)
                 if path:
                     self.python_var.set(path)
             ttk.Button(bar, text="Find…", command=choose_python).pack(side="left", padx=(0, 12))
@@ -848,8 +875,22 @@ if __name__ == "__main__":
     known, rest = parse_top_level(sys.argv[1:])
     if known.gui or not rest:
         # GUI mode if --gui OR if no other args given
-        ensure_awatch()  # ensure dependency
-        run_gui()
+        try:
+            run_gui()
+        except Exception as e:
+            # Surface errors instead of a silent close on double-click
+            if os.name == "nt":
+                try:
+                    import ctypes, traceback
+                    ctypes.windll.user32.MessageBoxW(
+                        0,
+                        f"{traceback.format_exc()}",
+                        "WatchGCG – startup error",
+                        0x00000010,  # MB_ICONHAND
+                    )
+                except Exception:
+                    pass
+            raise
     else:
         cli = build_cli_parser().parse_args(rest)
         
