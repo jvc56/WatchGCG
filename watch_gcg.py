@@ -7,11 +7,34 @@ import argparse
 import asyncio
 import subprocess
 
-_AWATCH = None  
+#-----------------------------
+# Install watchfiles if missing
+#-----------------------------
+
+def _in_venv() -> bool:
+    # True when running inside venv/virtualenv
+    return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+
+def _pip_cmd(py_exe: str) -> list[str]:
+    return [py_exe, "-m", "pip"]
+
+def _bootstrap_pip(py_exe: str, log):
+    # If pip is missing, try ensurepip.
+    try:
+        subprocess.check_call([py_exe, "-m", "pip", "--version"],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
+    except Exception:
+        pass
+    log("Bootstrapping pip via ensurepip …")
+    try:
+        subprocess.check_call([py_exe, "-m", "ensurepip", "--upgrade"])
+    except subprocess.CalledProcessError:
+        log("Warning: ensurepip failed. Will still try pip install if available.")
 
 def ensure_awatch(log_fn=None, upgrade_tools=False):
     """
-    Ensure watchfiles.awatch is available. Optionally upgrade pip/setuptools/wheel first.
+    Ensure watchfiles.awatch is available. Optionally upgrade pip/setuptools/wheel.
     Cached after first success.
     """
     global _AWATCH
@@ -24,6 +47,7 @@ def ensure_awatch(log_fn=None, upgrade_tools=False):
         else:
             print(msg, file=sys.stderr)
 
+    # Fast path: already installed
     try:
         from watchfiles import awatch as _a
         _AWATCH = _a
@@ -33,27 +57,38 @@ def ensure_awatch(log_fn=None, upgrade_tools=False):
 
     py = sys.executable or "python"
 
+    # Make sure pip exists
+    _bootstrap_pip(py, _log)
+
     if upgrade_tools:
         _log("Upgrading pip/setuptools/wheel …")
         try:
-            subprocess.check_call([py, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+            subprocess.check_call(_pip_cmd(py) + ["install", "--upgrade", "pip", "setuptools", "wheel"])
         except subprocess.CalledProcessError:
             _log("Warning: Could not upgrade pip/setuptools/wheel. Continuing …")
 
+    # Install watchfiles; use --user only when not in venv
     _log("Installing 'watchfiles' …")
     try:
-        args = [py, "-m", "pip", "install", "watchfiles"]
-        if os.name == "nt":
-            args.insert(3, "--user")  
-        subprocess.check_call(args)
-    except subprocess.CalledProcessError:
-        _log(f"Error: Failed to install 'watchfiles'. Try: {py} -m pip install watchfiles")
+        cmd = _pip_cmd(py) + ["install"]
+        if not _in_venv():
+            cmd += ["--user"]
+        cmd += ["watchfiles"]
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as e:
+        hint = f"{py} -m pip install{' --user' if not _in_venv() else ''} watchfiles"
+        _log(f"Error: Failed to install 'watchfiles'. Try:\n    {hint}")
         raise
 
+    # Import now that it's installed
     from watchfiles import awatch as _a
     _AWATCH = _a
     _log("Successfully installed 'watchfiles'.")
     return _AWATCH
+
+#----------------------------
+# Main logic
+#----------------------------
 
 vowels = "aeiouAEIOU"
 
