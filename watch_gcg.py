@@ -3,6 +3,7 @@
 import os
 import re
 import sys
+from pathlib import Path
 import argparse
 import asyncio
 import subprocess
@@ -11,82 +12,41 @@ import subprocess
 # Install watchfiles if missing
 #-----------------------------
 
-_AWATCH = None
+def ensure_requirements():
+    here = Path(__file__).resolve().parent
+    req = here / "requirements.txt"
 
-def _in_venv() -> bool:
-    # True when running inside venv/virtualenv
-    return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
+    if not req.exists():
+        return  # nothing to install
 
-def _pip_cmd(py_exe: str) -> list[str]:
-    return [py_exe, "-m", "pip"]
-
-def _bootstrap_pip(py_exe: str, log):
-    # If pip is missing, try ensurepip.
     try:
-        subprocess.check_call([py_exe, "-m", "pip", "--version"],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Fast path: assume requirements already installed
+        import watchfiles
         return
-    except Exception:
+    except ModuleNotFoundError:
         pass
-    log("Bootstrapping pip via ensurepip …")
+
+    print("Installing requirements from requirements.txt…", file=sys.stderr)
+
+    cmd = [
+        sys.executable,
+        "-m", "pip",
+        "install",
+        "-r", str(req),
+    ]
     try:
-        subprocess.check_call([py_exe, "-m", "ensurepip", "--upgrade"])
-    except subprocess.CalledProcessError:
-        log("Warning: ensurepip failed. Will still try pip install if available.")
-
-def ensure_awatch(log_fn=None, upgrade_tools=False):
-    """
-    Ensure watchfiles.awatch is available. Optionally upgrade pip/setuptools/wheel.
-    Cached after first success.
-    """
-    global _AWATCH
-    if _AWATCH is not None:
-        return _AWATCH
-
-    def _log(msg):
-        if log_fn:
-            log_fn(msg + "\n")
-        else:
-            print(msg, file=sys.stderr)
-
-    # Fast path: already installed
-    try:
-        from watchfiles import awatch as _a
-        _AWATCH = _a
-        return _AWATCH
-    except Exception:
-        pass  # fall through to install
-
-    py = sys.executable or "python"
-
-    # Make sure pip exists
-    _bootstrap_pip(py, _log)
-
-    if upgrade_tools:
-        _log("Upgrading pip/setuptools/wheel …")
-        try:
-            subprocess.check_call(_pip_cmd(py) + ["install", "--upgrade", "pip", "setuptools", "wheel"])
-        except subprocess.CalledProcessError:
-            _log("Warning: Could not upgrade pip/setuptools/wheel. Continuing …")
-
-    # Install watchfiles; use --user only when not in venv
-    _log("Installing 'watchfiles' …")
-    try:
-        cmd = _pip_cmd(py) + ["install"]
-        if not _in_venv():
-            cmd += ["--user"]
-        cmd += ["watchfiles"]
         subprocess.check_call(cmd)
-    except subprocess.CalledProcessError as e:
-        hint = f"{py} -m pip install{' --user' if not _in_venv() else ''} watchfiles"
-        _log(f"Error: Failed to install 'watchfiles'. Try:\n    {hint}")
-        raise
+    except subprocess.CalledProcessError:
+        print(
+            "\nERROR: Failed to install requirements.\n"
+            "Try running:\n"
+            f"  {sys.executable} -m pip install -r {req}\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
-    # Import now that it's installed
-    from watchfiles import awatch as _a
-    _AWATCH = _a
-    _log("Successfully installed 'watchfiles'.")
-    return _AWATCH
+    import importlib
+    importlib.invalidate_caches()
 
 #----------------------------
 # Main logic
@@ -419,7 +379,7 @@ async def main(
         p1score=None, 
         p2score=None):
     
-    awatch = ensure_awatch()
+    from watchfiles import awatch
 
     word_definitions, lex_symbols_map = read_definitions(lex_filename)
     print(
@@ -644,10 +604,6 @@ def run_gui():
             self._make_file_picker_section()
             self._make_controls()
             self._make_log()
-
-            # Ensure dependency; show progress in the GUI log
-            # Choose upgrade_tools=True to upgrade pip/setuptools/wheel
-            ensure_awatch(self._append_log, upgrade_tools=False)
 
             # Validate python exe
             py = (self.python_var.get() or "").strip()
@@ -909,6 +865,7 @@ def parse_top_level(argv):
     return known, rest
 
 if __name__ == "__main__":
+    ensure_requirements()
     known, rest = parse_top_level(sys.argv[1:])
     if known.gui or not rest:
         # GUI mode if --gui OR if no other args given

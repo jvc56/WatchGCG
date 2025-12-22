@@ -27,7 +27,7 @@ This repo contains scripts to extract game data from GCG files in realtime for l
 ## Requirements
 - Python 3.9+ recommended (any modern Python 3 should work).
 
-- ``watchfiles`` module is **installed automatically** on first run. If you prefer manual install instead, run:
+- ``watchfiles`` module is **installed automatically** on first run but you **must** have ``requirements.txt``. If you prefer manual install instead, run:
 
     ```bash
     # Manual installation
@@ -37,7 +37,6 @@ This repo contains scripts to extract game data from GCG files in realtime for l
     # on Windows if you use the launcher:
     py -m pip install watchfiles
     ```
-> The script may optionally upgrade ``pip/setuptools/wheel``, but by default it does not (see ``ensure_awatch(upgrade_tools=False)`` in the code).
 
 ## Running the GUI
 >Running the GUI presumes that you have the TK App installed (Windows & the official macOS python.org installers already include Tk.)
@@ -45,10 +44,10 @@ This repo contains scripts to extract game data from GCG files in realtime for l
 ### Methods
 You have two options:
 - UI (**Recommended**)
-    - Clone the repo or download the ``watch_gcg.py`` script to your computer
+    - Clone the repo to your computer
     - Double-click ``watch_gcg.py``
 - CLI
-    - Clone the repo or download the ``watch_gcg.py`` script to your computer
+    - Clone the repo to your computer
     - Navigate to its directory in the Command Terminal
     - Any **one** of these will open the GUI:
 
