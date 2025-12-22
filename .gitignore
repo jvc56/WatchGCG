@@ -1,5 +1,7 @@
-*.txt
+WOW24_updated.txt
 __pycache__
 gui_watch_gcg.py
 watch_gcg_au.py
 WOW24defs/
+virtualenv/
+lexica-txt_files/
