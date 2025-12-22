@@ -5,3 +5,5 @@ watch_gcg_au.py
 WOW24defs/
 virtualenv/
 lexica-txt_files/
+*.txt
+*.gcg
