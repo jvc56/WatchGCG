@@ -48,6 +48,55 @@ def ensure_requirements():
     import importlib
     importlib.invalidate_caches()
 
+# The Pillow library is not a strict requirement as it is only needed
+# to produce board images.
+
+_PIL_INSTALLED = False
+
+def ensure_pil(log_fn=None):
+    """
+    Ensure Pillow (PIL) is available and functional. 
+    Throws RuntimeError if installation or import fails.
+    """
+    global _PIL_INSTALLED
+    if _PIL_INSTALLED:
+        return True
+
+    def _log(msg):
+        if log_fn: log_fn(msg + "\n")
+        else: print(msg, file=sys.stderr)
+
+    try:
+        from PIL import Image
+        # Test that the compiled extension works
+        Image.new('RGB', (1, 1)) 
+        _PIL_INSTALLED = True
+        return True
+    except (ImportError, AttributeError):
+        # This catches the '_imaging' import error specifically
+        pass
+
+    py = sys.executable or "python"
+    _log("Pillow installation is missing or broken. Attempting fix/install...")
+    
+    try:
+        cmd = [py, "-m", "pip", "install", "--force-reinstall", "Pillow"]
+        if getattr(sys, "base_prefix", sys.prefix) == sys.prefix:
+            cmd += ["--user"]
+        subprocess.check_call(cmd)
+        
+        # Final verification
+        from PIL import Image
+        Image.new('RGB', (1, 1))
+        _PIL_INSTALLED = True
+        return True
+    except Exception as e:
+        raise RuntimeError(
+            "Failed to install or repair 'Pillow'. Image generation cannot proceed.\n"
+            f"Error: {e}\n"
+            f"Try running: {py} -m pip install --force-reinstall Pillow"
+        )
+
 #----------------------------
 # Main logic
 #----------------------------
@@ -165,6 +214,55 @@ class Board:
                 row += 1
 
         return filled_in_word
+
+    def save_image(self, gcg_filename, last_play, startx, starty, tile_spacing, board_scale, tile_scale):
+        from PIL import Image
+
+        try:
+            # 1. Open the base board image
+            board_img = Image.open("img/board.jpg").convert("RGB")
+            board_orig_w, board_orig_h = board_img.size
+            board_new_size = (int(board_orig_w * board_scale), int(board_orig_h * board_scale))
+            resized_board_img = board_img.resize(board_new_size, Image.Resampling.LANCZOS)
+        except FileNotFoundError:
+            print("Error: 'board.jpg' not found in the current directory.")
+            return
+
+        # 2. Iterate through the 15x15 board matrix
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                tile_char = self.matrix[row][col]
+                
+                if tile_char:
+                    # GCG blank tiles are lowercase; use uppercase for filenames
+                    char_to_load = tile_char.upper()
+                    tile_filename = f"img/{char_to_load}.jpg"
+                    
+                    try:
+                        tile_img = Image.open(tile_filename).convert("RGB")
+                        
+                        # Calculate new dimensions: 1/15th of original height and width
+                        orig_w, orig_h = tile_img.size
+                        new_size = (int(orig_w * tile_scale), int(orig_h * tile_scale))
+                        
+                        # Resize the tile in memory using high-quality resampling
+                        resized_tile = tile_img.resize(new_size, Image.Resampling.LANCZOS)
+                        
+                        # Calculate pixel position based on matrix indices
+                        x_pos = startx + (col * tile_spacing)
+                        y_pos = starty + (row * tile_spacing)
+                        
+                        # Overlay the resized letter tile onto the board image
+                        resized_board_img.paste(resized_tile, (x_pos, y_pos))
+                    except FileNotFoundError:
+                        print(f"Warning: Could not find tile image {tile_filename}")
+
+        # 3. Construct filename: "some_name.gcg" -> "some_name_<LAST_PLAY>.jpg"
+        base_name = os.path.splitext(gcg_filename)[0]
+        output_filename = f"{base_name}{last_play}.jpg"
+
+        # 4. Save the finalized board image
+        resized_board_img.save(output_filename, "JPEG")
 
 class Bag:
     def __init__(self):
@@ -340,6 +438,14 @@ class Game:
             return f'{LAST_PLAY_PREFIX}{self.previous_player} pass {self.previous_score} {self.previous_total}'
         raise ValueError(f'Unknown move type: {self.previous_move_type}')
 
+    def save_image(self, gcg_filename, startx, starty, tile_spacing, board_scale, tile_scale):
+        last_play = ""
+        if self.previous_move_type != MOVE_TYPE_UNSPECIFIED:
+            word_with_parens = self.board.get_filled_in_word(self.previous_position, self.previous_word)
+            last_play = "_" + re.sub(r'[^A-Za-z]', '', word_with_parens.upper())
+
+        return self.board.save_image(gcg_filename, last_play, startx, starty, tile_spacing, board_scale, tile_scale)
+
 def read_definitions(filename):
     word_definitions = {}
     lex_symbols_map = {} 
@@ -377,7 +483,14 @@ async def main(
         last_play_output_filename, 
         ver="std", 
         p1score=None, 
-        p2score=None):
+        p2score=None,
+        tilestartx=50,
+        tilestarty=50,
+        tilespacing=50,
+        boardscale=1.0,
+        tilescale=1.0,
+        saveboardimg=False
+        ):
     
     from watchfiles import awatch
 
@@ -393,11 +506,6 @@ async def main(
 
     async for _ in awatch(gcg_filename):
         game = Game(gcg_filename)
-
-        # print("scores: " + game.get_scores_string())
-        # print("unseen: " + game.get_unseen_tiles_string())
-        # print("count: " + game.get_unseen_count_string())
-        # print("last play: " + game.get_last_play_string())
 
         if ver == "au":
             if p1score and p2score:
@@ -429,6 +537,9 @@ async def main(
         with open(last_play_output_filename, "w") as last_play_file:
             last_play_file.write(game.get_last_play_string(word_definitions, lex_symbols_map))
 
+        if saveboardimg:
+            game.save_image(gcg_filename, tilestartx, tilestarty, tilespacing, boardscale, tilescale)
+
 async def run_watcher(args):
     await main(
         args.gcg, 
@@ -439,7 +550,13 @@ async def run_watcher(args):
         args.lp, 
         args.ver, 
         args.p1score, 
-        args.p2score
+        args.p2score,
+        args.tilestartx,
+        args.tilestarty,
+        args.tilespacing,
+        args.boardscale,
+        args.tilescale,
+        args.saveboardimg
     )
 
 def build_cli_parser():
@@ -454,6 +571,14 @@ def build_cli_parser():
     p.add_argument("--lp", type=str, help="the output file to write the last play")
     p.add_argument("--ver", choices=["std", "au"], default="std",
                    help="Output format: 'std' (default) outputs one file with both scores; 'au' writes p1_*/p2_* files")
+    
+    # Optional layout arguments
+    p.add_argument("--tilestartx", type=int, default=50, help="Horizontal offset of the first tile in the board image")
+    p.add_argument("--tilestarty", type=int, default=50, help="Vertical offset of the first tile in the board image")
+    p.add_argument("--tilespacing", type=int, default=50, help="Spacing between tiles in the board image")
+    p.add_argument("--boardscale", type=float, default=1.0, help="Scale of the board in the board image")
+    p.add_argument("--tilescale", type=float, default=1.0, help="Scale of the tiles in the board image")
+    p.add_argument("--saveboardimg", action="store_true", help="Output board images")
     return p
 
 def run_gui():
@@ -887,7 +1012,9 @@ if __name__ == "__main__":
             raise
     else:
         cli = build_cli_parser().parse_args(rest)
-        
+        if cli.saveboardimg:
+            ensure_pil()
+
         for required_inputs in ("gcg", "lex", "unseen", "count", "lp"):
             if not getattr(cli, required_inputs, None):
                 print(f"required: {required_inputs}"); sys.exit(-1)
