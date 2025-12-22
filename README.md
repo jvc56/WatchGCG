@@ -25,7 +25,7 @@ This repo contains scripts to extract game data from GCG files in realtime for l
    - ``au``: outputs separate score files for Player 1 and Player 2
 
 ## Requirements
-- Python 3.7+ recommended (any modern Python 3 should work).
+- Python 3.9+ recommended (any modern Python 3 should work).
 
 - ``watchfiles`` module is **installed automatically** on first run. If you prefer manual install instead, run:
 
