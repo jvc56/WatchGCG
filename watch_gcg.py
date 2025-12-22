@@ -11,6 +11,8 @@ import subprocess
 # Install watchfiles if missing
 #-----------------------------
 
+_AWATCH = None
+
 def _in_venv() -> bool:
     # True when running inside venv/virtualenv
     return getattr(sys, "base_prefix", sys.prefix) != sys.prefix
