@@ -148,6 +148,20 @@ class Players:
     def set_score(self, name_or_index, score):
         self.scores[self.get_index(name_or_index)] = int(score)
 
+def get_unique_image(char_to_load):
+    directory = 'img/'
+    
+    files = os.listdir(directory)
+    
+    matches = [f for f in files if os.path.splitext(f)[0] == char_to_load]
+    
+    if len(matches) == 0:
+        raise FileNotFoundError(f"Error: No file named '{char_to_load}' found in {directory}")
+    elif len(matches) > 1:
+        raise RuntimeError(f"Error: Multiple extensions found for '{char_to_load}': {matches}")
+    
+    return os.path.join(directory, matches[0])
+
 class Board:
     def __init__(self):
         self.matrix = [['' for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
@@ -236,8 +250,8 @@ class Board:
                 if tile_char:
                     # GCG blank tiles are lowercase; use uppercase for filenames
                     char_to_load = tile_char.upper()
-                    tile_filename = f"img/{char_to_load}.jpg"
-                    
+                    tile_filename = get_unique_image(char_to_load)
+
                     try:
                         tile_img = Image.open(tile_filename).convert("RGB")
                         
