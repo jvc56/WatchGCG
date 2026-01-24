@@ -333,11 +333,18 @@ class Game:
         self.previous_position = ""
         self.previous_word = ""
         self.previous_move_type = MOVE_TYPE_UNSPECIFIED
+        self.blanks = []  # List of (position, tile_designation) tuples
+        self.tiles_played = [0, 0]  # Tiles played per player
+        self.power_tiles_played = [0, 0]  # Power tiles per player: S, J, Q, X, Z, ?
         self.parse_gcg(gcg)
 
     def place_tiles(self, position, word):
         self.board.place_tiles(position, word)
         self.bag.remove_tiles(word)
+        
+        # Track blanks and stats for tile placements
+        player_index = self.players.get_index(self.previous_player)
+        self._track_blanks_and_stats(position, word, player_index)
 
     def unplace_tiles(self, position, word):
         self.board.unplace_tiles(position, word)
@@ -345,6 +352,47 @@ class Game:
 
     def remove_tiles(self, word):
         self.bag.remove_tiles(word)
+
+    def _track_blanks_and_stats(self, position, word, player_index):
+        """Track blanks and power tiles played."""
+        row, col = self.board.get_row_and_col_from_position(position)
+        is_horizontal = position[0].isdigit()
+        
+        power_tiles_set = set('SJQXZ?')
+        
+        for i, tile in enumerate(word):
+            if tile == '.':
+                # Play-through tile, skip
+                continue
+            
+            # Track tiles played (count non-play-through tiles)
+            self.tiles_played[player_index] += 1
+            
+            # Track blanks (lowercase letters) and count as power tiles
+            if tile.islower():
+                # Calculate the board position for this tile
+                if is_horizontal:
+                    board_col = col + i
+                    board_row = row
+                else:
+                    board_col = col
+                    board_row = row + i
+                
+                # Convert to GCG notation (1-indexed, column as letter)
+                col_letter = chr(ord('A') + board_col)
+                row_number = board_row + 1
+                
+                if is_horizontal:
+                    gcg_position = f"{row_number}{col_letter}"
+                else:
+                    gcg_position = f"{col_letter}{row_number}"
+                
+                self.blanks.append((gcg_position, tile.upper()))
+                # Blanks count as power tiles
+                self.power_tiles_played[player_index] += 1
+            # Track power tiles
+            elif tile.upper() in power_tiles_set:
+                self.power_tiles_played[player_index] += 1
 
     def parse_gcg(self, gcg):
         with open(gcg, 'r') as f:
@@ -452,6 +500,28 @@ class Game:
             return f'{LAST_PLAY_PREFIX}{self.previous_player} pass {self.previous_score} {self.previous_total}'
         raise ValueError(f'Unknown move type: {self.previous_move_type}')
 
+    def get_blank_1_string(self):
+        """Return blank 1 info if it exists."""
+        if len(self.blanks) >= 1:
+            position, tile = self.blanks[0]
+            return f"{position} {tile}"
+        return ""
+    
+    def get_blank_2_string(self):
+        """Return blank 2 info if it exists."""
+        if len(self.blanks) >= 2:
+            position, tile = self.blanks[1]
+            return f"{position} {tile}"
+        return ""
+    
+    def get_stats1_string(self):
+        """Return player 1 stats: tiles played and power tiles played."""
+        return f"Tiles: {self.tiles_played[0]}\nPower: {self.power_tiles_played[0]}"
+    
+    def get_stats2_string(self):
+        """Return player 2 stats: tiles played and power tiles played."""
+        return f"Tiles: {self.tiles_played[1]}\nPower: {self.power_tiles_played[1]}"
+
     def save_image(self, gcg_filename, startx, starty, tile_spacing, board_scale, tile_scale):
         last_play = ""
         if self.previous_move_type != MOVE_TYPE_UNSPECIFIED:
@@ -495,6 +565,10 @@ async def main(
         unseen_output_filename, 
         count_output_filename, 
         last_play_output_filename, 
+        blank1_output_filename=None,
+        blank2_output_filename=None,
+        stats1_output_filename=None,
+        stats2_output_filename=None,
         ver="std", 
         p1score=None, 
         p2score=None,
@@ -551,6 +625,26 @@ async def main(
         with open(last_play_output_filename, "w") as last_play_file:
             last_play_file.write(game.get_last_play_string(word_definitions, lex_symbols_map))
 
+        # Write blank files if they exist
+        if blank1_output_filename:
+            blank1_content = game.get_blank_1_string()
+            with open(blank1_output_filename, "w") as blank1_file:
+                blank1_file.write(blank1_content)
+        
+        if blank2_output_filename:
+            blank2_content = game.get_blank_2_string()
+            with open(blank2_output_filename, "w") as blank2_file:
+                blank2_file.write(blank2_content)
+        
+        # Write stats files if provided
+        if stats1_output_filename:
+            with open(stats1_output_filename, "w") as stats1_file:
+                stats1_file.write(game.get_stats1_string())
+        
+        if stats2_output_filename:
+            with open(stats2_output_filename, "w") as stats2_file:
+                stats2_file.write(game.get_stats2_string())
+
         if saveboardimg:
             game.save_image(gcg_filename, tilestartx, tilestarty, tilespacing, boardscale, tilescale)
 
@@ -562,6 +656,10 @@ async def run_watcher(args):
         args.unseen, 
         args.count, 
         args.lp, 
+        getattr(args, 'blank1', None),
+        getattr(args, 'blank2', None),
+        getattr(args, 'stats1', None),
+        getattr(args, 'stats2', None),
         args.ver, 
         args.p1score, 
         args.p2score,
@@ -583,6 +681,10 @@ def build_cli_parser():
     p.add_argument("--unseen", type=str, help="the output file to write the unseen tiles")
     p.add_argument("--count", type=str,  help="the output file to write the number of unseen tiles and vowel to consonant ratio")
     p.add_argument("--lp", type=str, help="the output file to write the last play")
+    p.add_argument("--blank1", type=str, help="the output file to write the first blank (if any)")
+    p.add_argument("--blank2", type=str, help="the output file to write the second blank (if any)")
+    p.add_argument("--stats1", type=str, help="the output file to write player 1 game stats (tiles and power tiles)")
+    p.add_argument("--stats2", type=str, help="the output file to write player 2 game stats (tiles and power tiles)")
     p.add_argument("--ver", choices=["std", "au"], default="std",
                    help="Output format: 'std' (default) outputs one file with both scores; 'au' writes p1_*/p2_* files")
     
@@ -624,6 +726,10 @@ def run_gui():
         "unseen":"Last folder used for Unseen tiles output",
         "count": "Last folder used for Unseen count output",
         "lp":    "Last folder used for Last-play output",
+        "blank1":"Last folder used for Blank 1 output",
+        "blank2":"Last folder used for Blank 2 output",
+        "stats1":"Last folder used for Stats 1 output",
+        "stats2":"Last folder used for Stats 2 output",
     }
 
     SUCCESS_MARK = "To stop execution, hit control-C."  # gate log output
@@ -816,6 +922,10 @@ def run_gui():
                 ("unseen","Unseen tiles (.txt)",      [("Unseen Tiles", "*.txt")]),
                 ("count", "Unseen count (.txt)",      [("Unseen Count", "*.txt")]),
                 ("lp",    "Last play (.txt)",         [("Last Play", "*.txt")]),
+                ("blank1","Blank 1 (.txt)",           [("Blank 1", "*.txt")]),
+                ("blank2","Blank 2 (.txt)",           [("Blank 2", "*.txt")]),
+                ("stats1","Stats 1 (.txt)",           [("Stats 1", "*.txt")]),
+                ("stats2","Stats 2 (.txt)",           [("Stats 2", "*.txt")]),
             ]
 
             self._row_widgets = {}
@@ -963,6 +1073,16 @@ def run_gui():
             else:
                 # Because GUI always requires two files explicitly in AU mode
                 args += ["--p1score", vals["p1score"], "--p2score", vals["p2score"]]
+
+            # Add optional blank and stats files if provided
+            if vals.get("blank1"):
+                args += ["--blank1", vals["blank1"]]
+            if vals.get("blank2"):
+                args += ["--blank2", vals["blank2"]]
+            if vals.get("stats1"):
+                args += ["--stats1", vals["stats1"]]
+            if vals.get("stats2"):
+                args += ["--stats2", vals["stats2"]]
 
             # Persist folders
             for k, v in vals.items():
