@@ -387,7 +387,9 @@ class Game:
                 else:
                     gcg_position = f"{col_letter}{row_number}"
                 
-                self.blanks.append((gcg_position, tile.upper()))
+                word_with_parens = self.board.get_filled_in_word(self.previous_position, self.previous_word)
+                
+                self.blanks.append({"position": gcg_position, "tile": tile.upper(), "word": word_with_parens})
                 # Blanks count as power tiles
                 self.power_tiles_played[player_index] += 1
             # Track power tiles
@@ -503,15 +505,14 @@ class Game:
     def get_blank_1_string(self):
         """Return blank 1 info if it exists."""
         if len(self.blanks) >= 1:
-            position, tile = self.blanks[0]
-            return f"{position} {tile}"
+            return self.blanks[0]["word"]
         return ""
     
     def get_blank_2_string(self):
         """Return blank 2 info if it exists."""
         if len(self.blanks) >= 2:
-            position, tile = self.blanks[1]
-            return f"{position} {tile}"
+            return self.blanks[1]["word"]
+        
         return ""
     
     def get_stats1_string(self):
@@ -527,7 +528,6 @@ class Game:
         if self.previous_move_type != MOVE_TYPE_UNSPECIFIED:
             word_with_parens = self.board.get_filled_in_word(self.previous_position, self.previous_word)
             last_play = "_" + re.sub(r'[^A-Za-z]', '', word_with_parens.upper())
-
         return self.board.save_image(gcg_filename, last_play, startx, starty, tile_spacing, board_scale, tile_scale)
 
 def read_definitions(filename):
