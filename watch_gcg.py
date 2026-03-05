@@ -116,6 +116,9 @@ MOVE_TYPE_EXCHANGE = 2
 MOVE_TYPE_PASS = 3
 
 LAST_PLAY_PREFIX = "     LAST PLAY: "
+POWER_TILES_SET = set('SJQXZ?')
+
+
 class Players:
     def __init__(self):
         self.names = ["", ""]
@@ -347,6 +350,25 @@ class Game:
         self._track_blanks_and_stats(position, word, player_index)
 
     def unplace_tiles(self, position, word):
+        player_index = self.players.get_index(self.previous_player)
+        for tile in word:
+            if tile == '.':
+                # Play-through tile, skip
+                continue
+            
+            # Track tiles played (count non-play-through tiles)
+            self.tiles_played[player_index] -= 1
+            
+            # Track blanks (lowercase letters) and count as power tiles
+            if tile.islower():
+                # Remove the most recently added blank since we're unplacing it
+                self.blanks.pop() 
+                # Blanks count as power tiles
+                self.power_tiles_played[player_index] -= 1
+            # Track power tiles
+            elif tile.upper() in POWER_TILES_SET:
+                self.power_tiles_played[player_index] -= 1
+
         self.board.unplace_tiles(position, word)
         self.bag.add_tiles(word)
 
@@ -358,7 +380,6 @@ class Game:
         row, col = self.board.get_row_and_col_from_position(position)
         is_horizontal = position[0].isdigit()
         
-        power_tiles_set = set('SJQXZ?')
         
         for i, tile in enumerate(word):
             if tile == '.':
@@ -393,7 +414,7 @@ class Game:
                 # Blanks count as power tiles
                 self.power_tiles_played[player_index] += 1
             # Track power tiles
-            elif tile.upper() in power_tiles_set:
+            elif tile.upper() in POWER_TILES_SET:
                 self.power_tiles_played[player_index] += 1
 
     def parse_gcg(self, gcg):
