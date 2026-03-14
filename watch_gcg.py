@@ -600,7 +600,7 @@ async def _drain_magpie(proc, timeout=0.5):
     return ''.join(collected)
 
 
-async def _wait_for_magpie_finished(proc, timeout=5.0):
+async def _wait_for_magpie_finished(proc, timeout=1.0):
     """Read stdout lines until a 'finished' line is seen, or until timeout/EOF."""
     collected = []
     deadline = asyncio.get_event_loop().time() + timeout
