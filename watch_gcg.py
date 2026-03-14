@@ -595,6 +595,8 @@ async def _drain_magpie(proc, timeout=0.5):
                 decoded = line.decode(errors='replace')
                 _magpie_debug(f"[MAGPIE] {decoded}", end='', flush=True)
                 collected.append(decoded)
+            else:  # EOF
+                break
         except asyncio.TimeoutError:
             break
     return ''.join(collected)
@@ -630,7 +632,7 @@ def _magpie_warn_and_disable(proc, context, output):
         f"MAGPIE reported a problem during {context}.\n"
         "Autosim has been DISABLED. The rest of the program will\n"
         "continue running normally without automatic analysis.\n"
-        f"\nMAGPIE output:\n{output.strip()}\n"
+        f"\nMAGPIE output:\n>{output.strip()}<\n"
         + "=" * 60 + "\n",
         flush=True
     )
@@ -743,8 +745,8 @@ async def main(
             stderr=asyncio.subprocess.STDOUT,
             cwd=autosim_path,
         )
-        startup_output = await _wait_for_magpie_finished(magpie_proc)
-        if not _magpie_output_ok(startup_output):
+        startup_output = await _drain_magpie(magpie_proc, timeout=1.0)
+        if 'error' in startup_output.lower():
             magpie_proc = _magpie_warn_and_disable(magpie_proc, 'startup', startup_output)
         else:
             initial_config = f'set -lex {lex} -ld english -printonf true -shwithmoves false -minp 200 -numplays 200 -eplies 25\n'
