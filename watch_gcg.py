@@ -600,23 +600,46 @@ async def _drain_magpie(proc, timeout=0.5):
     return ''.join(collected)
 
 
-async def _wait_for_magpie_finished(proc, keyword):
-    """Read stdout lines until a 'finished' line is seen, or raise after 1 second."""
+async def _wait_for_magpie_finished(proc, timeout=5.0):
+    """Read stdout lines until a 'finished' line is seen, or until timeout/EOF."""
     collected = []
-    deadline = asyncio.get_event_loop().time() + 1.0
+    deadline = asyncio.get_event_loop().time() + timeout
     while True:
         remaining = deadline - asyncio.get_event_loop().time()
         if remaining <= 0:
-            raise RuntimeError(f"timed out waiting for 'finished' after {keyword}. Output received:\n{''.join(collected)}")
+            break
         try:
             line = await asyncio.wait_for(proc.stdout.readline(), timeout=remaining)
+            if not line:  # EOF
+                break
             decoded = line.decode(errors='replace')
             _magpie_debug(f"[MAGPIE] {decoded}", end='', flush=True)
             collected.append(decoded)
-            if 'finished' in decoded:
+            if 'finished' in decoded or 'error' in decoded.lower():
                 break
         except asyncio.TimeoutError:
-            raise RuntimeError(f"timed out waiting for 'finished' after {keyword}. Output received:\n{''.join(collected)}")
+            break
+    return ''.join(collected)
+
+
+def _magpie_warn_and_disable(proc, context, output):
+    """Print a prominent autosim warning, kill the process, and return None."""
+    print(
+        "\n" + "=" * 60 + "\n"
+        "!!! AUTOSIM WARNING !!!\n"
+        f"MAGPIE reported a problem during {context}.\n"
+        "Autosim has been DISABLED. The rest of the program will\n"
+        "continue running normally without automatic analysis.\n"
+        f"\nMAGPIE output:\n{output.strip()}\n"
+        + "=" * 60 + "\n",
+        flush=True
+    )
+    proc.kill()
+    return None
+
+
+def _magpie_output_ok(output):
+    return 'finished' in output and 'error' not in output.lower()
 
 
 async def _run_magpie_analysis(proc, gcg_filename, game, poll_interval=1.0):
@@ -632,12 +655,18 @@ async def _run_magpie_analysis(proc, gcg_filename, game, poll_interval=1.0):
         proc.stdin.write(f'load {gcg_abs}\n'.encode())
         await proc.stdin.drain()
         _magpie_debug("[MAGPIE] sent load, waiting for finished", flush=True)
-        await _wait_for_magpie_finished(proc, 'load')
+        load_output = await _wait_for_magpie_finished(proc)
+        if not _magpie_output_ok(load_output):
+            _magpie_warn_and_disable(proc, 'load', load_output)
+            return
 
         proc.stdin.write(b'goto end\n')
         await proc.stdin.drain()
         _magpie_debug("[MAGPIE] sent goto end, waiting for finished", flush=True)
-        await _wait_for_magpie_finished(proc, 'goto')
+        goto_output = await _wait_for_magpie_finished(proc)
+        if not _magpie_output_ok(goto_output):
+            _magpie_warn_and_disable(proc, 'goto end', goto_output)
+            return
 
         proc.stdin.write(f'{command}\n'.encode())
         await proc.stdin.drain()
@@ -705,16 +734,25 @@ async def main(
     magpie_proc = None
     analysis_task = None
     if autosim_path:
+        lex_stem = Path(lex_filename).stem  # e.g. "NWL23defs"
+        lex = re.sub(r'defs$', '', lex_stem, flags=re.IGNORECASE)  # e.g. "NWL23"
         magpie_proc = await asyncio.create_subprocess_exec(
             './bin/magpie',
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE if AUTOSIM_DEBUG else asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.STDOUT,
             cwd=autosim_path,
         )
-        magpie_proc.stdin.write(b'set -lex CSW24 -printonf true -shwithmoves false -minp 200 -numplays 200 -eplies 25\n')
-        await magpie_proc.stdin.drain()
-        await _wait_for_magpie_finished(magpie_proc, 'set')
+        startup_output = await _wait_for_magpie_finished(magpie_proc)
+        if not _magpie_output_ok(startup_output):
+            magpie_proc = _magpie_warn_and_disable(magpie_proc, 'startup', startup_output)
+        else:
+            initial_config = f'set -lex {lex} -ld english -printonf true -shwithmoves false -minp 200 -numplays 200 -eplies 25\n'
+            magpie_proc.stdin.write(initial_config.encode())
+            await magpie_proc.stdin.drain()
+            set_output = await _wait_for_magpie_finished(magpie_proc)
+            if not _magpie_output_ok(set_output):
+                magpie_proc = _magpie_warn_and_disable(magpie_proc, 'initial configuration', set_output)
 
     print(
         f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
@@ -781,7 +819,7 @@ async def main(
         if saveboardimg:
             game.save_image(gcg_filename, tilestartx, tilestarty, tilespacing, boardscale, tilescale)
 
-        if autosim_path:
+        if autosim_path and magpie_proc:
             if analysis_task and not analysis_task.done():
                 analysis_task.cancel()
                 try:
