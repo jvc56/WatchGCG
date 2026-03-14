@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+AUTOSIM_DEBUG = False
+
+def _magpie_debug(*args, **kwargs):
+    if AUTOSIM_DEBUG:
+        print(*args, **kwargs)
+
 import os
 import re
 import sys
@@ -579,8 +585,98 @@ def get_word_definition(word_definitions, word):
     # print(f'No definition found for {word}')
     return ""
 
+async def _drain_magpie(proc, timeout=0.5):
+    """Read all available lines from proc.stdout within the given timeout window."""
+    collected = []
+    while True:
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=timeout)
+            if line:
+                decoded = line.decode(errors='replace')
+                _magpie_debug(f"[MAGPIE] {decoded}", end='', flush=True)
+                collected.append(decoded)
+        except asyncio.TimeoutError:
+            break
+    return ''.join(collected)
+
+
+async def _wait_for_magpie_finished(proc, keyword):
+    """Read stdout lines until a 'finished' line is seen, or raise after 1 second."""
+    collected = []
+    deadline = asyncio.get_event_loop().time() + 1.0
+    while True:
+        remaining = deadline - asyncio.get_event_loop().time()
+        if remaining <= 0:
+            raise RuntimeError(f"timed out waiting for 'finished' after {keyword}. Output received:\n{''.join(collected)}")
+        try:
+            line = await asyncio.wait_for(proc.stdout.readline(), timeout=remaining)
+            decoded = line.decode(errors='replace')
+            _magpie_debug(f"[MAGPIE] {decoded}", end='', flush=True)
+            collected.append(decoded)
+            if 'finished' in decoded:
+                break
+        except asyncio.TimeoutError:
+            raise RuntimeError(f"timed out waiting for 'finished' after {keyword}. Output received:\n{''.join(collected)}")
+
+
+async def _run_magpie_analysis(proc, gcg_filename, game, poll_interval=1.0):
+    """Load the current GCG into MAGPIE, run analysis, and write results to analysis.txt."""
+    try:
+        unseen_count, _ = game.bag.get_unseen_counts()
+        command = 'endgame' if unseen_count <= 7 else 'gs'
+        final_cmd = 'she' if command == 'endgame' else 'shm'
+
+        gcg_abs = os.path.abspath(gcg_filename)
+        _magpie_debug(f"[MAGPIE] starting analysis: unseen={unseen_count}, command={command}", flush=True)
+
+        proc.stdin.write(f'load {gcg_abs}\n'.encode())
+        await proc.stdin.drain()
+        _magpie_debug("[MAGPIE] sent load, waiting for finished", flush=True)
+        await _wait_for_magpie_finished(proc, 'load')
+
+        proc.stdin.write(b'goto end\n')
+        await proc.stdin.drain()
+        _magpie_debug("[MAGPIE] sent goto end, waiting for finished", flush=True)
+        await _wait_for_magpie_finished(proc, 'goto')
+
+        proc.stdin.write(f'{command}\n'.encode())
+        await proc.stdin.drain()
+        _magpie_debug(f"[MAGPIE] sent {command}", flush=True)
+
+        await asyncio.sleep(0.2)
+
+        proc.stdin.write(b'status\n')
+        await proc.stdin.drain()
+        _magpie_debug("[MAGPIE] sent initial status", flush=True)
+
+        while True:
+            await asyncio.sleep(poll_interval)
+            output = await _drain_magpie(proc, timeout=0.1)
+            if output:
+                with open('analysis.txt', 'w') as f:
+                    f.write(output)
+            if '(error 1)' in output or 'finished' in output:
+                _magpie_debug(f"[MAGPIE] command finished, fetching result with {final_cmd}", flush=True)
+                proc.stdin.write(f'{final_cmd}\n'.encode())
+                await proc.stdin.drain()
+                final_output = await _drain_magpie(proc, timeout=2.0)
+                with open('analysis.txt', 'w') as f:
+                    f.write(final_output)
+                _magpie_debug("[MAGPIE] analysis.txt written", flush=True)
+                break
+            proc.stdin.write(b'status\n')
+            await proc.stdin.drain()
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        import traceback
+        _magpie_debug(f"[MAGPIE] analysis task error: {e}", flush=True)
+        if AUTOSIM_DEBUG:
+            traceback.print_exc()
+
+
 async def main(
-        gcg_filename, 
+        gcg_filename,
         lex_filename, 
         score_output_filename, 
         unseen_output_filename, 
@@ -598,12 +694,28 @@ async def main(
         tilespacing=50,
         boardscale=1.0,
         tilescale=1.0,
-        saveboardimg=False
+        saveboardimg=False,
+        autosim_path=None
         ):
     
     from watchfiles import awatch
 
     word_definitions, lex_symbols_map = read_definitions(lex_filename)
+
+    magpie_proc = None
+    analysis_task = None
+    if autosim_path:
+        magpie_proc = await asyncio.create_subprocess_exec(
+            './bin/magpie',
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE if AUTOSIM_DEBUG else asyncio.subprocess.DEVNULL,
+            cwd=autosim_path,
+        )
+        magpie_proc.stdin.write(b'set -lex CSW24 -printonf true -shwithmoves false -minp 200 -numplays 200 -eplies 25\n')
+        await magpie_proc.stdin.drain()
+        await _wait_for_magpie_finished(magpie_proc, 'set')
+
     print(
         f"\n\n\n!!! SUCCESS !!!\nSuccessfully starting watching {gcg_filename} for changes.\n"
         "On certain operating systems you might see syntax warnings above which can be safely ignored.\n"
@@ -669,6 +781,20 @@ async def main(
         if saveboardimg:
             game.save_image(gcg_filename, tilestartx, tilestarty, tilespacing, boardscale, tilescale)
 
+        if autosim_path:
+            if analysis_task and not analysis_task.done():
+                analysis_task.cancel()
+                try:
+                    await analysis_task
+                except asyncio.CancelledError:
+                    pass
+            magpie_proc.stdin.write(b'stop\n')
+            await magpie_proc.stdin.drain()
+            await _drain_magpie(magpie_proc, timeout=0.5)
+            analysis_task = asyncio.create_task(
+                _run_magpie_analysis(magpie_proc, gcg_filename, game)
+            )
+
 async def run_watcher(args):
     await main(
         args.gcg, 
@@ -689,7 +815,8 @@ async def run_watcher(args):
         args.tilespacing,
         args.boardscale,
         args.tilescale,
-        args.saveboardimg
+        args.saveboardimg,
+        getattr(args, 'autosim', None)
     )
 
 def build_cli_parser():
@@ -716,6 +843,7 @@ def build_cli_parser():
     p.add_argument("--boardscale", type=float, default=1.0, help="Scale of the board in the board image")
     p.add_argument("--tilescale", type=float, default=1.0, help="Scale of the tiles in the board image")
     p.add_argument("--saveboardimg", action="store_true", help="Output board images")
+    p.add_argument("--autosim", type=str, default=None, help="Path to MAGPIE directory for automatic analysis after each GCG update")
     return p
 
 def run_gui():
